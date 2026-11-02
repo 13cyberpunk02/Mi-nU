@@ -33,15 +33,17 @@ namespace Mi_nU.Pages
         readonly AuthService _auth;
         readonly ChatApi _api;
         readonly ChatHubClient _hub;
+        readonly CallService _calls;
         readonly ObservableCollection<MessageRow> _rows = [];
         ChatDto? _chat;
 
-        public ChatPage(AuthService auth, ChatApi api, ChatHubClient hub)
+        public ChatPage(AuthService auth, ChatApi api, ChatHubClient hub, CallService calls)
         {
             InitializeComponent();
             _auth = auth;
             _api = api;
             _hub = hub;
+            _calls = calls;
             Messages.ItemsSource = _rows;
             MessageEntry.MaxLength = Limits.MessageMax;
         }
@@ -83,6 +85,26 @@ namespace Mi_nU.Pages
                 ScrollToEnd();
             }
             catch (ApiException error)
+            {
+                ShowError(error.Message);
+            }
+        }
+
+        async void OnAudioCallClicked(object? sender, EventArgs e) => await StartCallAsync(video: false);
+
+        async void OnVideoCallClicked(object? sender, EventArgs e) => await StartCallAsync(video: true);
+
+        async Task StartCallAsync(bool video)
+        {
+            if (_chat is null)
+                return;
+
+            try
+            {
+                await _calls.StartAsync(_chat, video);
+                await Shell.Current.GoToAsync("call");
+            }
+            catch (CallException error)
             {
                 ShowError(error.Message);
             }

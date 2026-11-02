@@ -21,6 +21,9 @@ namespace Mi_nU
             builder.Services.AddSingleton<Services.AuthService>();
             builder.Services.AddSingleton<Services.ChatApi>();
             builder.Services.AddSingleton<Services.ChatHubClient>();
+            builder.Services.AddSingleton<Services.CallService>();
+            builder.Services.AddTransient<Pages.CallPage>();
+            builder.Services.AddTransient<Pages.IncomingCallPage>();
             builder.Services.AddTransient<Pages.ChatPage>();
             builder.Services.AddTransient<Pages.NewChatPage>();
             builder.Services.AddTransient<Pages.NewGroupPage>();

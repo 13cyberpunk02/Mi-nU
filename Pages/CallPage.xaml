@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:webrtc="clr-namespace:Maui.WebRTC;assembly=Maui.WebRTC"
+             x:Class="Mi_nU.Pages.CallPage"
+             Shell.NavBarIsVisible="False">
+
+    <!-- Video views are native surfaces that may cover whatever overlaps them, so tiles sit side by side and names get their own row. -->
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="8" RowSpacing="8">
+        <Label x:Name="StatusLabel" AutomationId="CallStatus" HorizontalTextAlignment="Center" />
+
+        <Grid Grid.Row="1" x:Name="Tiles" RowDefinitions="*,*" ColumnDefinitions="*,*" RowSpacing="8" ColumnSpacing="8">
+            <Grid x:Name="Tile0" RowDefinitions="Auto,*">
+                <Label x:Name="Name0" AutomationId="CallTile0" />
+                <webrtc:VideoView Grid.Row="1" x:Name="Video0" />
+            </Grid>
+            <Grid x:Name="Tile1" RowDefinitions="Auto,*" IsVisible="False">
+                <Label x:Name="Name1" AutomationId="CallTile1" />
+                <webrtc:VideoView Grid.Row="1" x:Name="Video1" />
+            </Grid>
+            <Grid x:Name="Tile2" RowDefinitions="Auto,*" IsVisible="False">
+                <Label x:Name="Name2" AutomationId="CallTile2" />
+                <webrtc:VideoView Grid.Row="1" x:Name="Video2" />
+            </Grid>
+            <Grid x:Name="Tile3" RowDefinitions="Auto,*" IsVisible="False">
+                <Label x:Name="Name3" AutomationId="CallTile3" />
+                <webrtc:VideoView Grid.Row="1" x:Name="Video3" />
+            </Grid>
+        </Grid>
+
+        <Label Grid.Row="2" x:Name="DebugLabel" AutomationId="CallDebug" IsVisible="False" FontSize="11" />
+
+        <Grid Grid.Row="3" ColumnDefinitions="*,*,*" ColumnSpacing="8">
+            <Button x:Name="MuteButton" AutomationId="CallMute" Clicked="OnMuteClicked" />
+            <Button Grid.Column="1" x:Name="CameraButton" AutomationId="CallCamera" Clicked="OnCameraClicked" />
+            <Button Grid.Column="2" AutomationId="CallHangUp" Text="Завершить" BackgroundColor="#B3261E" TextColor="White" Clicked="OnHangUpClicked" />
+        </Grid>
+    </Grid>
+
+</ContentPage>

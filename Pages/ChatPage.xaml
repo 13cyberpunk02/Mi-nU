@@ -37,7 +37,13 @@
     </ContentPage.Resources>
 
     <Grid RowDefinitions="Auto,*,Auto,Auto">
-        <Button x:Name="OlderButton" AutomationId="ChatOlder" Text="Показать предыдущие" IsVisible="False" Margin="8,4" Clicked="OnOlderClicked" />
+        <VerticalStackLayout Spacing="4" Margin="8,4">
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button AutomationId="ChatCallAudio" Text="Позвонить" Clicked="OnAudioCallClicked" />
+                <Button Grid.Column="1" AutomationId="ChatCallVideo" Text="Видеозвонок" Clicked="OnVideoCallClicked" />
+            </Grid>
+            <Button x:Name="OlderButton" AutomationId="ChatOlder" Text="Показать предыдущие" IsVisible="False" Clicked="OnOlderClicked" />
+        </VerticalStackLayout>
         <CollectionView Grid.Row="1" x:Name="Messages" AutomationId="ChatMessages" SelectionMode="Single"
                         ItemTemplate="{StaticResource MessageSelector}" SelectionChanged="OnMessageSelected" />
         <Label Grid.Row="2" x:Name="ErrorLabel" AutomationId="ChatError" IsVisible="False" Margin="8,0"

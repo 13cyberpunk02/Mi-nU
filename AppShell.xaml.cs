@@ -6,7 +6,7 @@ namespace Mi_nU
     {
         readonly ChatHubClient _hub;
 
-        public AppShell(AuthService auth, ChatHubClient hub)
+        public AppShell(AuthService auth, ChatHubClient hub, CallService calls)
         {
             InitializeComponent();
             _hub = hub;
@@ -14,7 +14,11 @@ namespace Mi_nU
             Routing.RegisterRoute("chat", typeof(Pages.ChatPage));
             Routing.RegisterRoute("newchat", typeof(Pages.NewChatPage));
             Routing.RegisterRoute("newgroup", typeof(Pages.NewGroupPage));
+            Routing.RegisterRoute("call", typeof(Pages.CallPage));
+            Routing.RegisterRoute("incomingcall", typeof(Pages.IncomingCallPage));
             auth.SignedOut += OnSignedOut;
+            calls.IncomingCall += OnIncomingCall;
+            calls.Finished += OnCallFinished;
         }
 
         void OnSignedOut() => MainThread.BeginInvokeOnMainThread(async () =>
@@ -22,5 +26,15 @@ namespace Mi_nU
             await _hub.StopAsync();
             await GoToAsync("//login");
         });
+
+        async void OnIncomingCall() => await GoToAsync("incomingcall");
+
+        async void OnCallFinished(string? reason)
+        {
+            if (CurrentPage is Pages.CallPage or Pages.IncomingCallPage)
+                await GoToAsync("..");
+            if (reason is not null)
+                await CurrentPage.DisplayAlertAsync("Звонок", reason, "ОК");
+        }
     }
 }

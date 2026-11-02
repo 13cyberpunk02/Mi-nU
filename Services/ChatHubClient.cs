@@ -22,6 +22,12 @@ namespace Mi_nU.Services
         public event Action<ChatDto>? ChatCreated;
         /// <summary>Connected or reconnected: anything sent while offline has to be fetched again.</summary>
         public event Action? Connected;
+        public event Action<CallInvite>? CallInvited;
+        public event Action<CallParticipant>? CallParticipantJoined;
+        public event Action<CallParticipant>? CallParticipantLeft;
+        public event Action<Guid, UserDto>? CallDeclined;
+        public event Action<Guid>? CallEnded;
+        public event Action<CallSignal>? CallSignalReceived;
 
         /// <summary>Does nothing if already started.</summary>
         public void Start()
@@ -37,6 +43,12 @@ namespace Mi_nU.Services
 
             hub.On<MessageDto>(nameof(IChatClient.MessageReceived), message => MessageReceived?.Invoke(message));
             hub.On<ChatDto>(nameof(IChatClient.ChatCreated), chat => ChatCreated?.Invoke(chat));
+            hub.On<CallInvite>(nameof(IChatClient.CallInvited), invite => CallInvited?.Invoke(invite));
+            hub.On<CallParticipant>(nameof(IChatClient.CallParticipantJoined), participant => CallParticipantJoined?.Invoke(participant));
+            hub.On<CallParticipant>(nameof(IChatClient.CallParticipantLeft), participant => CallParticipantLeft?.Invoke(participant));
+            hub.On<Guid, UserDto>(nameof(IChatClient.CallDeclined), (callId, user) => CallDeclined?.Invoke(callId, user));
+            hub.On<Guid>(nameof(IChatClient.CallEnded), callId => CallEnded?.Invoke(callId));
+            hub.On<CallSignal>(nameof(IChatClient.CallSignalReceived), signal => CallSignalReceived?.Invoke(signal));
             hub.Reconnected += _ =>
             {
                 Connected?.Invoke();
@@ -48,12 +60,24 @@ namespace Mi_nU.Services
             _ = ConnectAsync(hub, _stop.Token);
         }
 
-        public Task<MessageDto> SendMessageAsync(Guid chatId, string text, Guid clientMessageId)
-        {
-            if (_hub is not { State: HubConnectionState.Connected } hub)
-                throw new InvalidOperationException("Not connected.");
-            return hub.InvokeAsync<MessageDto>("SendMessage", chatId, text, clientMessageId);
-        }
+        public Task<MessageDto> SendMessageAsync(Guid chatId, string text, Guid clientMessageId) =>
+            Connection().InvokeAsync<MessageDto>("SendMessage", chatId, text, clientMessageId);
+
+        public Task<CallJoinResult> StartCallAsync(Guid chatId, bool video) =>
+            Connection().InvokeAsync<CallJoinResult>("StartCall", chatId, video);
+
+        public Task<CallJoinResult> JoinCallAsync(Guid callId) =>
+            Connection().InvokeAsync<CallJoinResult>("JoinCall", callId);
+
+        public Task DeclineCallAsync(Guid callId) => Connection().InvokeAsync("DeclineCall", callId);
+
+        public Task LeaveCallAsync(Guid callId) => Connection().InvokeAsync("LeaveCall", callId);
+
+        public Task SendCallSignalAsync(Guid callId, string toParticipantId, string type, string payload) =>
+            Connection().InvokeAsync("SendCallSignal", callId, toParticipantId, type, payload);
+
+        HubConnection Connection() =>
+            _hub is { State: HubConnectionState.Connected } hub ? hub : throw new InvalidOperationException("Not connected.");
 
         public async Task StopAsync()
         {

@@ -2,9 +2,9 @@
 
 # Mi`nU
 
-A messenger for Android and Windows, built with .NET MAUI and an ASP.NET Core server. Text chats go through SignalR; voice and video calls are planned on top of [13CyberPunk02.Maui.WebRTC](https://www.nuget.org/packages/13CyberPunk02.Maui.WebRTC).
+A messenger for Android and Windows, built with .NET MAUI and an ASP.NET Core server. Text chats go through SignalR, and voice and video calls use [13CyberPunk02.Maui.WebRTC](https://www.nuget.org/packages/13CyberPunk02.Maui.WebRTC).
 
-> Status: early development. Text chats work; calls are not in the app yet.
+> Status: early development. Calls only connect when devices can reach each other directly, such as on one local network: there are no STUN or TURN servers yet.
 
 ## Features
 
@@ -12,12 +12,14 @@ A messenger for Android and Windows, built with .NET MAUI and an ASP.NET Core se
 - Direct and group chats, and searching for people by username or name
 - Live message delivery and paged history
 - Retrying a failed message without creating a duplicate
+- One-to-one voice and video calls with an incoming call screen, while the app is open
+- Group calls of up to 4 people, with every device connected directly to the others
 
 ### Planned
 
-- One-to-one voice and video calls
-- Group calls of up to 4 people, with every device connected directly to the others
-- Unread counters, group management, push notifications
+- Calls across the internet
+- Incoming calls and notifications while the app is closed
+- Unread counters and group management
 
 ## Platforms
 
