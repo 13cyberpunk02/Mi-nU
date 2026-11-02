@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="Mi`nU.csproj" />
+  <Folder Name="/server/">
+    <Project Path="server/MinU.Contracts/MinU.Contracts.csproj" />
+    <Project Path="server/MinU.Server/MinU.Server.csproj" />
+    <Project Path="server/MinU.Server.Tests/MinU.Server.Tests.csproj" />
+  </Folder>
+</Solution>

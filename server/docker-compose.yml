@@ -1,0 +1,15 @@
+# Local development database. Port 5433 avoids clashing with an installed PostgreSQL.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: minu
+      POSTGRES_USER: minu
+      POSTGRES_PASSWORD: minu_dev
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - minu-postgres:/var/lib/postgresql/data
+
+volumes:
+  minu-postgres:

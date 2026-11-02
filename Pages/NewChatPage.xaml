@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:contracts="clr-namespace:MinU.Contracts;assembly=MinU.Contracts"
+             x:Class="Mi_nU.Pages.NewChatPage"
+             Title="Новый чат">
+
+    <Grid RowDefinitions="Auto,Auto,*" Padding="16,12" RowSpacing="8">
+        <Entry x:Name="SearchEntry" AutomationId="NewChatSearch" Placeholder="Логин или имя, минимум 2 символа"
+               IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" TextChanged="OnSearchChanged" />
+        <Label Grid.Row="1" x:Name="ErrorLabel" AutomationId="NewChatError" IsVisible="False"
+               TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
+        <CollectionView Grid.Row="2" x:Name="Results" AutomationId="NewChatResults" SelectionMode="Single" SelectionChanged="OnUserSelected">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="contracts:UserDto">
+                    <VerticalStackLayout Padding="8,10">
+                        <Label Text="{Binding DisplayName}" FontAttributes="Bold" />
+                        <Label Text="{Binding UserName}" FontSize="12"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                    </VerticalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+
+</ContentPage>

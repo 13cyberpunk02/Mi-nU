@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:pages="clr-namespace:Mi_nU.Pages"
+             x:Class="Mi_nU.Pages.ChatPage"
+             SafeAreaEdges="All">
+
+    <ContentPage.Resources>
+        <DataTemplate x:Key="MineTemplate" x:DataType="pages:MessageRow">
+            <Grid Padding="48,3,8,3">
+                <Border HorizontalOptions="End" Padding="10,6" StrokeThickness="0" StrokeShape="RoundRectangle 12"
+                        BackgroundColor="{AppThemeBinding Light=#E4DCFB, Dark=#3B2A7A}">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="{Binding Text}" />
+                        <Label Text="{Binding Status}" FontSize="11" HorizontalOptions="End"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="OtherTemplate" x:DataType="pages:MessageRow">
+            <Grid Padding="8,3,48,3">
+                <Border HorizontalOptions="Start" Padding="10,6" StrokeThickness="0" StrokeShape="RoundRectangle 12"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="{Binding Sender}" IsVisible="{Binding ShowSender}" FontSize="12" FontAttributes="Bold" />
+                        <Label Text="{Binding Text}" />
+                        <Label Text="{Binding Status}" FontSize="11" HorizontalOptions="End"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </DataTemplate>
+        <pages:MessageTemplateSelector x:Key="MessageSelector"
+                                       Mine="{StaticResource MineTemplate}"
+                                       Other="{StaticResource OtherTemplate}" />
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+        <Button x:Name="OlderButton" AutomationId="ChatOlder" Text="Показать предыдущие" IsVisible="False" Margin="8,4" Clicked="OnOlderClicked" />
+        <CollectionView Grid.Row="1" x:Name="Messages" AutomationId="ChatMessages" SelectionMode="Single"
+                        ItemTemplate="{StaticResource MessageSelector}" SelectionChanged="OnMessageSelected" />
+        <Label Grid.Row="2" x:Name="ErrorLabel" AutomationId="ChatError" IsVisible="False" Margin="8,0"
+               TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8" Padding="8">
+            <Entry x:Name="MessageEntry" AutomationId="ChatInput" Placeholder="Сообщение" Keyboard="Chat" ReturnType="Send" Completed="OnSendClicked" />
+            <Button Grid.Column="1" AutomationId="ChatSend" Text="Отправить" Clicked="OnSendClicked" />
+        </Grid>
+    </Grid>
+
+</ContentPage>

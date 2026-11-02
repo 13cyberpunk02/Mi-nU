@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Mi_nU.Pages.RegisterPage"
+             Title="Регистрация">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24" Spacing="12" MaximumWidthRequest="420">
+            <Label Text="Логин" />
+            <Entry x:Name="UserNameEntry" AutomationId="RegisterUserName" Keyboard="Plain" IsSpellCheckEnabled="False"
+                   IsTextPredictionEnabled="False" ReturnType="Next" Completed="OnFieldCompleted" />
+            <Label Text="Латинские буквы, цифры и _, от 3 до 32 символов" FontSize="12"
+                   TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+
+            <Label Text="Имя" />
+            <Entry x:Name="DisplayNameEntry" AutomationId="RegisterDisplayName" Keyboard="Text" ReturnType="Next" Completed="OnFieldCompleted" />
+
+            <Label Text="Пароль" />
+            <Entry x:Name="PasswordEntry" AutomationId="RegisterPassword" IsPassword="True" ReturnType="Next" Completed="OnFieldCompleted" />
+            <Label Text="Не короче 8 символов" FontSize="12"
+                   TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+
+            <Label Text="Повторите пароль" />
+            <Entry x:Name="ConfirmEntry" AutomationId="RegisterConfirm" IsPassword="True" ReturnType="Go" Completed="OnRegisterClicked" />
+
+            <Label x:Name="ErrorLabel" AutomationId="RegisterError" IsVisible="False"
+                   TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
+
+            <Button x:Name="RegisterButton" AutomationId="RegisterSubmit" Text="Зарегистрироваться" Clicked="OnRegisterClicked" Margin="0,8,0,0" />
+            <ActivityIndicator x:Name="Busy" IsVisible="False" IsRunning="False" />
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

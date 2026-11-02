@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Mi_nU.Pages.LoginPage"
+             Shell.NavBarIsVisible="False">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24" Spacing="12" MaximumWidthRequest="420" VerticalOptions="Center">
+            <Label Text="Mi`nU" Style="{StaticResource Headline}" SemanticProperties.HeadingLevel="Level1" />
+            <Label Text="Вход в аккаунт" HorizontalTextAlignment="Center" Margin="0,0,0,12" />
+
+            <Label Text="Логин" />
+            <Entry x:Name="UserNameEntry" AutomationId="LoginUserName" Keyboard="Plain" IsSpellCheckEnabled="False"
+                   IsTextPredictionEnabled="False" ReturnType="Next" Completed="OnUserNameCompleted" />
+
+            <Label Text="Пароль" />
+            <Entry x:Name="PasswordEntry" AutomationId="LoginPassword" IsPassword="True" ReturnType="Go" Completed="OnLoginClicked" />
+
+            <VerticalStackLayout x:Name="ServerSection" IsVisible="False" Spacing="12">
+                <Label Text="Адрес сервера (только для разработки)" />
+                <Entry x:Name="ServerEntry" AutomationId="LoginServer" Keyboard="Url" IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" />
+            </VerticalStackLayout>
+
+            <Label x:Name="ErrorLabel" AutomationId="LoginError" IsVisible="False"
+                   TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
+
+            <Button x:Name="LoginButton" AutomationId="LoginSubmit" Text="Войти" Clicked="OnLoginClicked" Margin="0,8,0,0" />
+            <ActivityIndicator x:Name="Busy" IsVisible="False" IsRunning="False" />
+            <Button x:Name="RegisterButton" AutomationId="LoginToRegister" Text="Создать аккаунт" Clicked="OnRegisterClicked"
+                    BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark=#CFBCFF}" />
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>
