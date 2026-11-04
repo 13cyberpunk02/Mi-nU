@@ -2,39 +2,74 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:webrtc="clr-namespace:Maui.WebRTC;assembly=Maui.WebRTC"
+             xmlns:controls="clr-namespace:Mi_nU.Controls"
+             xmlns:themes="clr-namespace:Mi_nU.Themes"
              x:Class="Mi_nU.Pages.CallPage"
+             BackgroundColor="{StaticResource CallBackground}"
              Shell.NavBarIsVisible="False">
 
-    <!-- Video views are native surfaces that may cover whatever overlaps them, so tiles sit side by side and names get their own row. -->
-    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="8" RowSpacing="8">
-        <Label x:Name="StatusLabel" AutomationId="CallStatus" HorizontalTextAlignment="Center" />
+    <!--
+        On Android each video is a SurfaceView, drawn beneath the window: names and buttons can lie over it,
+        but one video over another needs SetZOrderMediaOverlay, which the code-behind sets on the small preview.
+    -->
+    <Grid RowDefinitions="Auto,*,Auto" Padding="12,16,12,24" RowSpacing="12">
+        <VerticalStackLayout HorizontalOptions="Center" Spacing="2">
+            <Label x:Name="TitleLabel" FontFamily="InterSemiBold" FontSize="20" TextColor="{StaticResource CallText}" HorizontalTextAlignment="Center" />
+            <Label x:Name="StatusLabel" AutomationId="CallStatus" Style="{StaticResource CallLabel}" HorizontalTextAlignment="Center" />
+        </VerticalStackLayout>
 
-        <Grid Grid.Row="1" x:Name="Tiles" RowDefinitions="*,*" ColumnDefinitions="*,*" RowSpacing="8" ColumnSpacing="8">
-            <Grid x:Name="Tile0" RowDefinitions="Auto,*">
-                <Label x:Name="Name0" AutomationId="CallTile0" />
-                <webrtc:VideoView Grid.Row="1" x:Name="Video0" />
+        <Grid Grid.Row="1">
+            <Grid x:Name="Tiles" RowSpacing="8" ColumnSpacing="8">
+                <Border x:Name="Tile0" Style="{StaticResource CallTile}">
+                    <Grid>
+                        <controls:Avatar x:Name="Avatar0" Size="88" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <webrtc:VideoView x:Name="Video0" />
+                        <Border Style="{StaticResource TileName}"><Label x:Name="Name0" AutomationId="CallTile0" Style="{StaticResource TileNameText}" /></Border>
+                    </Grid>
+                </Border>
+                <Border x:Name="Tile1" Style="{StaticResource CallTile}" IsVisible="False">
+                    <Grid>
+                        <controls:Avatar x:Name="Avatar1" Size="88" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <webrtc:VideoView x:Name="Video1" />
+                        <Border Style="{StaticResource TileName}"><Label x:Name="Name1" AutomationId="CallTile1" Style="{StaticResource TileNameText}" /></Border>
+                    </Grid>
+                </Border>
+                <Border x:Name="Tile2" Style="{StaticResource CallTile}" IsVisible="False">
+                    <Grid>
+                        <controls:Avatar x:Name="Avatar2" Size="88" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <webrtc:VideoView x:Name="Video2" />
+                        <Border Style="{StaticResource TileName}"><Label x:Name="Name2" AutomationId="CallTile2" Style="{StaticResource TileNameText}" /></Border>
+                    </Grid>
+                </Border>
+                <Border x:Name="Tile3" Style="{StaticResource CallTile}" IsVisible="False">
+                    <Grid>
+                        <controls:Avatar x:Name="Avatar3" Size="88" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <webrtc:VideoView x:Name="Video3" />
+                        <Border Style="{StaticResource TileName}"><Label x:Name="Name3" AutomationId="CallTile3" Style="{StaticResource TileNameText}" /></Border>
+                    </Grid>
+                </Border>
             </Grid>
-            <Grid x:Name="Tile1" RowDefinitions="Auto,*" IsVisible="False">
-                <Label x:Name="Name1" AutomationId="CallTile1" />
-                <webrtc:VideoView Grid.Row="1" x:Name="Video1" />
-            </Grid>
-            <Grid x:Name="Tile2" RowDefinitions="Auto,*" IsVisible="False">
-                <Label x:Name="Name2" AutomationId="CallTile2" />
-                <webrtc:VideoView Grid.Row="1" x:Name="Video2" />
-            </Grid>
-            <Grid x:Name="Tile3" RowDefinitions="Auto,*" IsVisible="False">
-                <Label x:Name="Name3" AutomationId="CallTile3" />
-                <webrtc:VideoView Grid.Row="1" x:Name="Video3" />
-            </Grid>
+
+            <!-- One-to-one: your own video in the corner over the other person. -->
+            <Border x:Name="LocalPreview" IsVisible="False" WidthRequest="108" HeightRequest="156" Margin="12"
+                    HorizontalOptions="End" VerticalOptions="Start" StrokeThickness="2" Stroke="#40ECEFF2"
+                    StrokeShape="RoundRectangle 16" BackgroundColor="{StaticResource CallTileColor}">
+                <webrtc:VideoView x:Name="LocalVideo" HandlerChanged="OnLocalVideoHandlerChanged" />
+            </Border>
         </Grid>
 
-        <Label Grid.Row="2" x:Name="DebugLabel" AutomationId="CallDebug" IsVisible="False" FontSize="11" />
-
-        <Grid Grid.Row="3" ColumnDefinitions="*,*,*" ColumnSpacing="8">
-            <Button x:Name="MuteButton" AutomationId="CallMute" Clicked="OnMuteClicked" />
-            <Button Grid.Column="1" x:Name="CameraButton" AutomationId="CallCamera" Clicked="OnCameraClicked" />
-            <Button Grid.Column="2" AutomationId="CallHangUp" Text="Завершить" BackgroundColor="#B3261E" TextColor="White" Clicked="OnHangUpClicked" />
-        </Grid>
+        <VerticalStackLayout Grid.Row="2" Spacing="8">
+            <Label x:Name="DebugLabel" AutomationId="CallDebug" IsVisible="False" FontSize="11" TextColor="{StaticResource CallMuted}" />
+            <Border BackgroundColor="{StaticResource CallSurface}" StrokeThickness="0" StrokeShape="RoundRectangle 28" Padding="16,12"
+                    HorizontalOptions="Center" MaximumWidthRequest="480">
+                <HorizontalStackLayout Spacing="20">
+                    <Button x:Name="MuteButton" AutomationId="CallMute" Style="{StaticResource CallButton}" Clicked="OnMuteClicked" />
+                    <Button x:Name="CameraButton" AutomationId="CallCamera" Style="{StaticResource CallButton}" Clicked="OnCameraClicked" />
+                    <Button AutomationId="CallHangUp" Text="{x:Static themes:Icons.PhoneOff}" Style="{StaticResource HangUpButton}"
+                            SemanticProperties.Description="Завершить звонок" Clicked="OnHangUpClicked" />
+                </HorizontalStackLayout>
+            </Border>
+        </VerticalStackLayout>
     </Grid>
 
 </ContentPage>

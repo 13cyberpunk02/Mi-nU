@@ -2,32 +2,52 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="Mi_nU.Pages.LoginPage"
+             BackgroundColor="{DynamicResource BackgroundMuted}"
              Shell.NavBarIsVisible="False">
 
     <ScrollView>
-        <VerticalStackLayout Padding="24" Spacing="12" MaximumWidthRequest="420" VerticalOptions="Center">
-            <Label Text="Mi`nU" Style="{StaticResource Headline}" SemanticProperties.HeadingLevel="Level1" />
-            <Label Text="Вход в аккаунт" HorizontalTextAlignment="Center" Margin="0,0,0,12" />
-
-            <Label Text="Логин" />
-            <Entry x:Name="UserNameEntry" AutomationId="LoginUserName" Keyboard="Plain" IsSpellCheckEnabled="False"
-                   IsTextPredictionEnabled="False" ReturnType="Next" Completed="OnUserNameCompleted" />
-
-            <Label Text="Пароль" />
-            <Entry x:Name="PasswordEntry" AutomationId="LoginPassword" IsPassword="True" ReturnType="Go" Completed="OnLoginClicked" />
-
-            <VerticalStackLayout x:Name="ServerSection" IsVisible="False" Spacing="12">
-                <Label Text="Адрес сервера (только для разработки)" />
-                <Entry x:Name="ServerEntry" AutomationId="LoginServer" Keyboard="Url" IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" />
+        <VerticalStackLayout Padding="24,72,24,32" Spacing="16" MaximumWidthRequest="400" VerticalOptions="Center">
+            <VerticalStackLayout Spacing="12" Margin="0,0,0,16" HorizontalOptions="Center">
+                <Border WidthRequest="64" HeightRequest="64" StrokeThickness="0" StrokeShape="RoundRectangle 20"
+                        BackgroundColor="{DynamicResource Accent}" HorizontalOptions="Center">
+                    <Label Text="M" FontFamily="InterBold" FontSize="28" TextColor="{DynamicResource OnAccent}"
+                           HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
+                </Border>
+                <Label Text="Mi`nU" Style="{StaticResource Title}" HorizontalTextAlignment="Center" />
+                <Label Text="Войдите, чтобы продолжить" Style="{StaticResource Caption}" HorizontalTextAlignment="Center" />
             </VerticalStackLayout>
 
-            <Label x:Name="ErrorLabel" AutomationId="LoginError" IsVisible="False"
-                   TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Логин" Style="{StaticResource FieldLabel}" />
+                <Border Style="{StaticResource Field}">
+                    <Entry x:Name="UserNameEntry" AutomationId="LoginUserName" Keyboard="Plain" IsSpellCheckEnabled="False"
+                           IsTextPredictionEnabled="False" ReturnType="Next" Completed="OnUserNameCompleted" />
+                </Border>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Пароль" Style="{StaticResource FieldLabel}" />
+                <Border Style="{StaticResource Field}">
+                    <Entry x:Name="PasswordEntry" AutomationId="LoginPassword" IsPassword="True" ReturnType="Go" Completed="OnLoginClicked" />
+                </Border>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout x:Name="ServerSection" IsVisible="False" Spacing="6">
+                <Label Text="Адрес сервера (только для разработки)" Style="{StaticResource FieldLabel}" />
+                <Border Style="{StaticResource Field}">
+                    <Entry x:Name="ServerEntry" AutomationId="LoginServer" Keyboard="Url" IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" />
+                </Border>
+            </VerticalStackLayout>
+
+            <Label x:Name="ErrorLabel" AutomationId="LoginError" IsVisible="False" Style="{StaticResource Error}" />
 
             <Button x:Name="LoginButton" AutomationId="LoginSubmit" Text="Войти" Clicked="OnLoginClicked" Margin="0,8,0,0" />
             <ActivityIndicator x:Name="Busy" IsVisible="False" IsRunning="False" />
-            <Button x:Name="RegisterButton" AutomationId="LoginToRegister" Text="Создать аккаунт" Clicked="OnRegisterClicked"
-                    BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark=#CFBCFF}" />
+
+            <HorizontalStackLayout Spacing="2" HorizontalOptions="Center" Margin="0,8,0,0">
+                <Label Text="Нет аккаунта?" Style="{StaticResource Caption}" VerticalTextAlignment="Center" />
+                <Button x:Name="RegisterButton" AutomationId="LoginToRegister" Text="Создать" Style="{StaticResource GhostButton}" Clicked="OnRegisterClicked" />
+            </HorizontalStackLayout>
         </VerticalStackLayout>
     </ScrollView>
 

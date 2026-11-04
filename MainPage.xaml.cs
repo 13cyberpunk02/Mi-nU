@@ -7,6 +7,7 @@ namespace Mi_nU
     public record ChatRow(ChatDto Chat)
     {
         public string Title => Chat.Title;
+        public string Seed => Chat.Kind == ChatKind.Direct ? Chat.Title : Chat.Id.ToString();
         public string Preview => Chat.LastMessage switch
         {
             null => Chat.Kind == ChatKind.Group ? $"Участников: {Chat.Members.Count}" : "Сообщений пока нет",
@@ -22,6 +23,16 @@ namespace Mi_nU
         {
             var local = moment.ToLocalTime();
             return local.Date == DateTime.Today ? local.ToString("HH:mm") : local.ToString("dd.MM HH:mm");
+        }
+
+        public static string Day(DateTimeOffset moment)
+        {
+            var date = moment.ToLocalTime().Date;
+            if (date == DateTime.Today)
+                return "Сегодня";
+            if (date == DateTime.Today.AddDays(-1))
+                return "Вчера";
+            return date.ToString(date.Year == DateTime.Today.Year ? "d MMMM" : "d MMMM yyyy");
         }
     }
 
@@ -68,12 +79,13 @@ namespace Mi_nU
 
                 // Rebuilding an unchanged list would swallow a tap that lands in the middle of it.
                 static (Guid, long?) Key(ChatDto chat) => (chat.Id, chat.LastMessage?.Id);
-                if (chats.Select(Key).SequenceEqual(_chats.Select(row => Key(row.Chat))))
-                    return;
-
-                _chats.Clear();
-                foreach (var chat in chats)
-                    _chats.Add(new ChatRow(chat));
+                if (!chats.Select(Key).SequenceEqual(_chats.Select(row => Key(row.Chat))))
+                {
+                    _chats.Clear();
+                    foreach (var chat in chats)
+                        _chats.Add(new ChatRow(chat));
+                }
+                ApplySearch();
             }
             catch (ApiException error)
             {
@@ -89,6 +101,7 @@ namespace Mi_nU
         {
             if (_chats.All(row => row.Chat.Id != chat.Id))
                 _chats.Insert(0, new ChatRow(chat));
+            ApplySearch();
         });
 
         void OnMessageReceived(MessageDto message) => MainThread.BeginInvokeOnMainThread(async () =>
@@ -102,7 +115,28 @@ namespace Mi_nU
 
             _chats.Remove(row);
             _chats.Insert(0, new ChatRow(row.Chat with { LastMessage = message }));
+            ApplySearch();
         });
+
+        void OnSearchChanged(object? sender, TextChangedEventArgs e) => ApplySearch();
+
+        // The live list stays bound while nothing is typed, so updates never rebuild it under the user's finger.
+        void ApplySearch()
+        {
+            var query = SearchEntry.Text?.Trim() ?? "";
+            if (query.Length == 0)
+            {
+                if (ChatList.ItemsSource != _chats)
+                    ChatList.ItemsSource = _chats;
+                EmptyTitle.Text = "Чатов пока нет";
+                EmptyHint.Text = "Нажмите «+», чтобы найти собеседника или создать группу";
+                return;
+            }
+
+            ChatList.ItemsSource = _chats.Where(row => row.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
+            EmptyTitle.Text = "Ничего не найдено";
+            EmptyHint.Text = "Новых собеседников ищите через «+»";
+        }
 
         async void OnChatSelected(object? sender, SelectionChangedEventArgs e)
         {
@@ -115,9 +149,13 @@ namespace Mi_nU
 
         async void OnNewChatClicked(object? sender, EventArgs e) => await Shell.Current.GoToAsync("newchat");
 
-        async void OnNewGroupClicked(object? sender, EventArgs e) => await Shell.Current.GoToAsync("newgroup");
-
-        // AppShell returns to the sign-in screen when the session ends.
-        void OnLogoutClicked(object? sender, EventArgs e) => _auth.Logout();
+        async void OnProfileClicked(object? sender, EventArgs e)
+        {
+            const string logout = "Выйти";
+            var name = _auth.Session?.User.DisplayName ?? "";
+            // AppShell returns to the sign-in screen when the session ends.
+            if (await DisplayActionSheetAsync(name, "Отмена", logout) == logout)
+                _auth.Logout();
+        }
     }
 }

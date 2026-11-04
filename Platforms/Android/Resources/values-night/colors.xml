@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The dark theme's lighter accent, so the cursor stands out on dark fields. -->
+    <color name="colorPrimary">#4CC3B5</color>
+    <color name="colorPrimaryDark">#173B37</color>
+    <color name="colorAccent">#4CC3B5</color>
+</resources>

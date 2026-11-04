@@ -2,22 +2,49 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:contracts="clr-namespace:MinU.Contracts;assembly=MinU.Contracts"
+             xmlns:controls="clr-namespace:Mi_nU.Controls"
+             xmlns:themes="clr-namespace:Mi_nU.Themes"
              x:Class="Mi_nU.Pages.NewChatPage"
              Title="Новый чат">
 
-    <Grid RowDefinitions="Auto,Auto,*" Padding="16,12" RowSpacing="8">
-        <Entry x:Name="SearchEntry" AutomationId="NewChatSearch" Placeholder="Логин или имя, минимум 2 символа"
-               IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" TextChanged="OnSearchChanged" />
-        <Label Grid.Row="1" x:Name="ErrorLabel" AutomationId="NewChatError" IsVisible="False"
-               TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
-        <CollectionView Grid.Row="2" x:Name="Results" AutomationId="NewChatResults" SelectionMode="Single" SelectionChanged="OnUserSelected">
+    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="16,8" RowSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
+        <Border Style="{StaticResource FilledField}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <Label Text="{x:Static themes:Icons.Search}" Style="{StaticResource Icon}" FontSize="20" />
+                <Entry Grid.Column="1" x:Name="SearchEntry" AutomationId="NewChatSearch" Placeholder="Логин или имя"
+                       IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" TextChanged="OnSearchChanged" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" ColumnDefinitions="52,*" ColumnSpacing="12" Padding="8,10">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnNewGroupTapped" />
+            </Grid.GestureRecognizers>
+            <Border WidthRequest="52" HeightRequest="52" StrokeThickness="0" StrokeShape="Ellipse" BackgroundColor="{DynamicResource AccentSoft}">
+                <Label Text="{x:Static themes:Icons.Users}" Style="{StaticResource Icon}" TextColor="{DynamicResource AccentInk}" />
+            </Border>
+            <Button Grid.Column="1" AutomationId="MainNewGroup" Text="Новая группа" Style="{StaticResource GhostButton}"
+                    FontSize="17" HorizontalOptions="Start" Padding="0" Clicked="OnNewGroupTapped" />
+        </Grid>
+
+        <Label Grid.Row="2" x:Name="ErrorLabel" AutomationId="NewChatError" IsVisible="False" Style="{StaticResource Error}" />
+
+        <CollectionView Grid.Row="3" x:Name="Results" AutomationId="NewChatResults" SelectionMode="Single" SelectionChanged="OnUserSelected">
+            <CollectionView.EmptyView>
+                <ContentView>
+                    <Label x:Name="HintLabel" Text="Введите хотя бы 2 буквы логина или имени" Style="{StaticResource Caption}"
+                           HorizontalTextAlignment="Center" Margin="16,24" />
+                </ContentView>
+            </CollectionView.EmptyView>
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="contracts:UserDto">
-                    <VerticalStackLayout Padding="8,10">
-                        <Label Text="{Binding DisplayName}" FontAttributes="Bold" />
-                        <Label Text="{Binding UserName}" FontSize="12"
-                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
-                    </VerticalStackLayout>
+                    <Grid ColumnDefinitions="52,*" ColumnSpacing="12" Padding="8,10">
+                        <controls:Avatar Name="{Binding DisplayName}" Seed="{Binding DisplayName}" Size="52" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                            <Label Text="{Binding DisplayName}" Style="{StaticResource Name}" />
+                            <Label Text="{Binding UserName}" Style="{StaticResource Caption}" />
+                        </VerticalStackLayout>
+                    </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>

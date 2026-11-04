@@ -13,9 +13,23 @@ namespace Mi_nU
                 .UseWebRTC()
                 .ConfigureFonts(fonts =>
                 {
-                    fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
-                    fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+                    fonts.AddFont("Inter-Regular.ttf", "Inter");
+                    fonts.AddFont("Inter-Medium.ttf", "InterMedium");
+                    fonts.AddFont("Inter-SemiBold.ttf", "InterSemiBold");
+                    fonts.AddFont("Inter-Bold.ttf", "InterBold");
+                    fonts.AddFont("Lucide.ttf", "Icons");
                 });
+
+            // The Field style draws the border, so entries drop the platform's own underline or frame.
+            Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("NoChrome", (handler, _) =>
+            {
+#if ANDROID
+                handler.PlatformView.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent);
+#elif WINDOWS
+                // Focused and hover states come from Platforms/Windows/App.xaml: WinUI throws if a control's own resources are set here.
+                handler.PlatformView.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
+#endif
+            });
 
             builder.Services.AddSingleton<AppShell>();
             builder.Services.AddSingleton<Services.AuthService>();

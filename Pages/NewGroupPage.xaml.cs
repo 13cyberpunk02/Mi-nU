@@ -5,8 +5,9 @@ namespace Mi_nU.Pages
 {
     public record GroupUserRow(UserDto User, bool Selected)
     {
-        public string Name => (Selected ? "✓ " : "") + User.DisplayName;
+        public string Name => User.DisplayName;
         public string UserName => User.UserName;
+        public bool NotSelected => !Selected;
     }
 
     public partial class NewGroupPage : ContentPage

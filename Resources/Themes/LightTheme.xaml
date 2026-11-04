@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Every key here must also be in DarkTheme.xaml: a missing one silently falls back to the control's default. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                    x:Class="Mi_nU.Themes.LightTheme">
+
+    <Color x:Key="Background">#FFFFFF</Color>
+    <Color x:Key="BackgroundMuted">#F4F6F7</Color>
+    <Color x:Key="ChatBackground">#EEF1F3</Color>
+    <Color x:Key="Surface">#FFFFFF</Color>
+    <Color x:Key="SurfaceMuted">#EEF1F3</Color>
+    <Color x:Key="Pill">#E1E6EA</Color>
+    <Color x:Key="Line">#E1E5E9</Color>
+    <Color x:Key="InputBorder">#C9D0D6</Color>
+    <Color x:Key="InputBackground">#FFFFFF</Color>
+
+    <Color x:Key="Text">#15181C</Color>
+    <Color x:Key="TextMuted">#535C68</Color>
+    <Color x:Key="Disabled">#E9EEF0</Color>
+    <Color x:Key="DisabledText">#8A939D</Color>
+
+    <Color x:Key="Accent">#0F6E66</Color>
+    <Color x:Key="OnAccent">#FFFFFF</Color>
+    <Color x:Key="AccentText">#0F6E66</Color>
+    <Color x:Key="AccentSoft">#DDF1EE</Color>
+    <Color x:Key="AccentInk">#0F6E66</Color>
+
+    <Color x:Key="BubbleMine">#DDF1EE</Color>
+    <Color x:Key="BubbleMineMuted">#3F5F5B</Color>
+    <Color x:Key="BubbleOther">#FFFFFF</Color>
+    <Color x:Key="BubbleFailed">#FBE7E5</Color>
+    <Color x:Key="DangerText">#B02E26</Color>
+
+    <Color x:Key="AvatarBackground0">#DCE6F7</Color>
+    <Color x:Key="AvatarInk0">#2B4C86</Color>
+    <Color x:Key="AvatarBackground1">#F3E3D3</Color>
+    <Color x:Key="AvatarInk1">#7A4A1E</Color>
+    <Color x:Key="AvatarBackground2">#E3DDF5</Color>
+    <Color x:Key="AvatarInk2">#4B3A8C</Color>
+    <Color x:Key="AvatarBackground3">#DDF1EE</Color>
+    <Color x:Key="AvatarInk3">#0B5A53</Color>
+    <Color x:Key="AvatarBackground4">#F6E0E6</Color>
+    <Color x:Key="AvatarInk4">#8A2E4A</Color>
+    <Color x:Key="AvatarBackground5">#E6ECD9</Color>
+    <Color x:Key="AvatarInk5">#4A5E1F</Color>
+
+</ResourceDictionary>

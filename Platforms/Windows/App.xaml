@@ -5,4 +5,27 @@
     xmlns:maui="using:Microsoft.Maui"
     xmlns:local="using:Mi_nU.WinUI">
 
+    <maui:MauiWinUIApplication.Resources>
+        <ResourceDictionary>
+            <!-- The app's accent instead of the one picked in Windows settings: text selection, focus and toggles use it. -->
+            <Color x:Key="SystemAccentColor">#0F6E66</Color>
+            <Color x:Key="SystemAccentColorLight1">#2A8A81</Color>
+            <Color x:Key="SystemAccentColorLight2">#4CC3B5</Color>
+            <Color x:Key="SystemAccentColorLight3">#7DD8CD</Color>
+            <Color x:Key="SystemAccentColorDark1">#0B5A53</Color>
+            <Color x:Key="SystemAccentColorDark2">#084540</Color>
+            <Color x:Key="SystemAccentColorDark3">#06322E</Color>
+
+            <!-- Entries sit inside the app's own Field border, so WinUI's text box draws no frame or fill of its own. -->
+            <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+            <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+        </ResourceDictionary>
+    </maui:MauiWinUIApplication.Resources>
+
 </maui:MauiWinUIApplication>

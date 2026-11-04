@@ -1,18 +1,39 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Mi_nU.Controls"
+             xmlns:themes="clr-namespace:Mi_nU.Themes"
              x:Class="Mi_nU.Pages.IncomingCallPage"
+             BackgroundColor="{StaticResource CallBackground}"
              Shell.NavBarIsVisible="False">
 
-    <VerticalStackLayout Padding="24" Spacing="16" MaximumWidthRequest="420" VerticalOptions="Center">
-        <Label x:Name="CallerLabel" AutomationId="IncomingCaller" Style="{StaticResource SubHeadline}" />
-        <Label x:Name="KindLabel" AutomationId="IncomingKind" HorizontalTextAlignment="Center" />
-        <Label x:Name="ErrorLabel" AutomationId="IncomingError" IsVisible="False" HorizontalTextAlignment="Center"
-               TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
-        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-            <Button x:Name="DeclineButton" AutomationId="IncomingDecline" Text="Отклонить" BackgroundColor="#B3261E" TextColor="White" Clicked="OnDeclineClicked" />
-            <Button Grid.Column="1" x:Name="AcceptButton" AutomationId="IncomingAccept" Text="Ответить" BackgroundColor="#1B7F3B" TextColor="White" Clicked="OnAcceptClicked" />
-        </Grid>
-    </VerticalStackLayout>
+    <Grid RowDefinitions="*,Auto" Padding="32,96,32,48" MaximumWidthRequest="480">
+        <VerticalStackLayout Spacing="12" HorizontalOptions="Center">
+            <controls:Avatar x:Name="CallerAvatar" Size="112" HorizontalOptions="Center" Margin="0,0,0,16" />
+            <Label x:Name="CallerLabel" AutomationId="IncomingCaller" FontFamily="InterBold" FontSize="28"
+                   TextColor="{StaticResource CallText}" HorizontalTextAlignment="Center" />
+            <Label x:Name="KindLabel" AutomationId="IncomingKind" Style="{StaticResource CallLabel}" FontSize="16" HorizontalTextAlignment="Center" />
+            <Label x:Name="ErrorLabel" AutomationId="IncomingError" IsVisible="False" HorizontalTextAlignment="Center"
+                   FontSize="14" TextColor="#F2A49E" />
+        </VerticalStackLayout>
+
+        <VerticalStackLayout Grid.Row="1" Spacing="16">
+            <Grid ColumnDefinitions="*,*">
+                <VerticalStackLayout Spacing="10" HorizontalOptions="Center">
+                    <Button x:Name="DeclineButton" AutomationId="IncomingDecline" Text="{x:Static themes:Icons.PhoneOff}"
+                            Style="{StaticResource DeclineButton}" SemanticProperties.Description="Отклонить" Clicked="OnDeclineClicked" />
+                    <Label Text="Отклонить" Style="{StaticResource CallLabel}" HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+                <VerticalStackLayout Grid.Column="1" Spacing="10" HorizontalOptions="Center">
+                    <Button x:Name="AcceptButton" AutomationId="IncomingAccept" Text="{x:Static themes:Icons.Phone}"
+                            Style="{StaticResource AnswerButton}" SemanticProperties.Description="Ответить" Clicked="OnAcceptClicked" />
+                    <Label Text="Ответить" Style="{StaticResource CallLabel}" HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+            </Grid>
+            <Button x:Name="AudioOnlyButton" AutomationId="IncomingAudioOnly" Text="Ответить без видео" IsVisible="False"
+                    Style="{StaticResource GhostButton}" TextColor="{StaticResource CallMuted}" HorizontalOptions="Center"
+                    Clicked="OnAcceptWithoutVideoClicked" />
+        </VerticalStackLayout>
+    </Grid>
 
 </ContentPage>

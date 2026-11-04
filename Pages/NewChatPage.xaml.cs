@@ -24,6 +24,9 @@ namespace Mi_nU.Pages
                     return;
 
                 Results.ItemsSource = users;
+                HintLabel.Text = (e.NewTextValue?.Trim().Length ?? 0) < 2
+                    ? "Введите хотя бы 2 буквы логина или имени"
+                    : "Никого не нашлось";
                 ErrorLabel.IsVisible = false;
             }
             catch (ApiException error)
@@ -48,6 +51,8 @@ namespace Mi_nU.Pages
                 ShowError(error.Message);
             }
         }
+
+        async void OnNewGroupTapped(object? sender, EventArgs e) => await Shell.Current.GoToAsync("../newgroup");
 
         void ShowError(string message)
         {

@@ -58,6 +58,8 @@ namespace Mi_nU.Services
         public CallInvite? Invite { get; private set; }
         public VideoTrack? LocalVideo { get; private set; }
         public IEnumerable<CallPeer> Peers => _peers.Values;
+        /// <summary>Who the call is with, for the call screen's header.</summary>
+        public string Title { get; private set; } = "";
         public bool IsMuted => _audio is { Enabled: false };
         public bool IsCameraOff => LocalVideo is { Enabled: false };
 
@@ -70,16 +72,19 @@ namespace Mi_nU.Services
         {
             EnsureIdle();
             _chat = chat;
+            Title = chat.Title;
             await JoinAsync(video, () => _hub.StartCallAsync(chat.Id, video));
             if (_peers.Count == 0)
                 _ = FinishIfNobodyAnswersAsync(_ringing = new CancellationTokenSource());
         }
 
-        public async Task AcceptAsync()
+        /// <summary><paramref name="video"/> false answers a video call without the camera.</summary>
+        public async Task AcceptAsync(bool video = true)
         {
             var invite = Invite ?? throw new CallException("Звонок уже завершён.");
             Invite = null;
-            await JoinAsync(invite.Video, () => _hub.JoinCallAsync(invite.CallId));
+            Title = invite.Caller.DisplayName;
+            await JoinAsync(invite.Video && video, () => _hub.JoinCallAsync(invite.CallId));
         }
 
         public async Task DeclineAsync()

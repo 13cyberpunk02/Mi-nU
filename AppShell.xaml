@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
+<!-- The navigation bar colors are set on the shell itself: Android otherwise paints it in colorPrimary. -->
 <Shell
     x:Class="Mi_nU.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -6,7 +7,11 @@
     xmlns:local="clr-namespace:Mi_nU"
     xmlns:pages="clr-namespace:Mi_nU.Pages"
     Title="Mi`nU"
-    FlyoutBehavior="Disabled">
+    FlyoutBehavior="Disabled"
+    Shell.BackgroundColor="{DynamicResource Surface}"
+    Shell.ForegroundColor="{DynamicResource Text}"
+    Shell.TitleColor="{DynamicResource Text}"
+    Shell.NavBarHasShadow="False">
 
     <ShellContent ContentTemplate="{DataTemplate pages:StartupPage}" Route="startup" />
     <ShellContent ContentTemplate="{DataTemplate pages:LoginPage}" Route="login" />

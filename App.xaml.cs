@@ -9,6 +9,8 @@ namespace Mi_nU
         public App(AppShell shell)
         {
             InitializeComponent();
+            Themes.ThemeManager.Apply(this);
+            RequestedThemeChanged += (_, _) => Themes.ThemeManager.Apply(this);
             _shell = shell;
         }
 

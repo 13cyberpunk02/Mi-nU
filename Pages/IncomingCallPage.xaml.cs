@@ -1,4 +1,5 @@
 using Mi_nU.Services;
+using Mi_nU.Themes;
 
 namespace Mi_nU.Pages
 {
@@ -15,8 +16,13 @@ namespace Mi_nU.Pages
         protected override void OnAppearing()
         {
             base.OnAppearing();
-            CallerLabel.Text = _calls.Invite?.Caller.DisplayName;
-            KindLabel.Text = _calls.Invite?.Video == true ? "Входящий видеозвонок" : "Входящий звонок";
+            var caller = _calls.Invite?.Caller.DisplayName ?? "";
+            var video = _calls.Invite?.Video == true;
+            CallerLabel.Text = caller;
+            CallerAvatar.Name = CallerAvatar.Seed = caller;
+            KindLabel.Text = video ? "Входящий видеозвонок" : "Входящий звонок";
+            AcceptButton.Text = video ? Icons.Video : Icons.Phone;
+            AudioOnlyButton.IsVisible = video;
         }
 
         protected override bool OnBackButtonPressed()
@@ -25,12 +31,16 @@ namespace Mi_nU.Pages
             return true;
         }
 
-        async void OnAcceptClicked(object? sender, EventArgs e)
+        async void OnAcceptClicked(object? sender, EventArgs e) => await AcceptAsync(video: true);
+
+        async void OnAcceptWithoutVideoClicked(object? sender, EventArgs e) => await AcceptAsync(video: false);
+
+        async Task AcceptAsync(bool video)
         {
-            AcceptButton.IsEnabled = DeclineButton.IsEnabled = false;
+            AcceptButton.IsEnabled = DeclineButton.IsEnabled = AudioOnlyButton.IsEnabled = false;
             try
             {
-                await _calls.AcceptAsync();
+                await _calls.AcceptAsync(video);
                 await Shell.Current.GoToAsync("../call");
             }
             catch (CallException error)

@@ -2,31 +2,46 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="Mi_nU.Pages.RegisterPage"
+             BackgroundColor="{DynamicResource BackgroundMuted}"
              Title="Регистрация">
 
     <ScrollView>
-        <VerticalStackLayout Padding="24" Spacing="12" MaximumWidthRequest="420">
-            <Label Text="Логин" />
-            <Entry x:Name="UserNameEntry" AutomationId="RegisterUserName" Keyboard="Plain" IsSpellCheckEnabled="False"
-                   IsTextPredictionEnabled="False" ReturnType="Next" Completed="OnFieldCompleted" />
-            <Label Text="Латинские буквы, цифры и _, от 3 до 32 символов" FontSize="12"
-                   TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+        <VerticalStackLayout Padding="24,16,24,32" Spacing="16" MaximumWidthRequest="400">
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Логин" Style="{StaticResource FieldLabel}" />
+                <Border Style="{StaticResource Field}">
+                    <Entry x:Name="UserNameEntry" AutomationId="RegisterUserName" Keyboard="Plain" IsSpellCheckEnabled="False"
+                           IsTextPredictionEnabled="False" ReturnType="Next" Completed="OnFieldCompleted" />
+                </Border>
+                <Label Text="Латинские буквы, цифры и _, от 3 до 32 символов" Style="{StaticResource Small}" />
+            </VerticalStackLayout>
 
-            <Label Text="Имя" />
-            <Entry x:Name="DisplayNameEntry" AutomationId="RegisterDisplayName" Keyboard="Text" ReturnType="Next" Completed="OnFieldCompleted" />
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Имя" Style="{StaticResource FieldLabel}" />
+                <Border Style="{StaticResource Field}">
+                    <Entry x:Name="DisplayNameEntry" AutomationId="RegisterDisplayName" Keyboard="Text" ReturnType="Next" Completed="OnFieldCompleted" />
+                </Border>
+                <Label Text="Так вас увидят собеседники" Style="{StaticResource Small}" />
+            </VerticalStackLayout>
 
-            <Label Text="Пароль" />
-            <Entry x:Name="PasswordEntry" AutomationId="RegisterPassword" IsPassword="True" ReturnType="Next" Completed="OnFieldCompleted" />
-            <Label Text="Не короче 8 символов" FontSize="12"
-                   TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Пароль" Style="{StaticResource FieldLabel}" />
+                <Border Style="{StaticResource Field}">
+                    <Entry x:Name="PasswordEntry" AutomationId="RegisterPassword" IsPassword="True" ReturnType="Next" Completed="OnFieldCompleted" />
+                </Border>
+                <Label Text="Не короче 8 символов" Style="{StaticResource Small}" />
+            </VerticalStackLayout>
 
-            <Label Text="Повторите пароль" />
-            <Entry x:Name="ConfirmEntry" AutomationId="RegisterConfirm" IsPassword="True" ReturnType="Go" Completed="OnRegisterClicked" />
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Повторите пароль" Style="{StaticResource FieldLabel}" />
+                <Border Style="{StaticResource Field}">
+                    <Entry x:Name="ConfirmEntry" AutomationId="RegisterConfirm" IsPassword="True" ReturnType="Go" Completed="OnRegisterClicked" />
+                </Border>
+            </VerticalStackLayout>
 
-            <Label x:Name="ErrorLabel" AutomationId="RegisterError" IsVisible="False"
-                   TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
+            <Label x:Name="ErrorLabel" AutomationId="RegisterError" IsVisible="False" Style="{StaticResource Error}" />
 
-            <Button x:Name="RegisterButton" AutomationId="RegisterSubmit" Text="Зарегистрироваться" Clicked="OnRegisterClicked" Margin="0,8,0,0" />
+            <Button x:Name="RegisterButton" AutomationId="RegisterSubmit" Text="Создать аккаунт" Clicked="OnRegisterClicked" Margin="0,8,0,0" />
             <ActivityIndicator x:Name="Busy" IsVisible="False" IsRunning="False" />
         </VerticalStackLayout>
     </ScrollView>

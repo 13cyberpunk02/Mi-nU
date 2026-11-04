@@ -2,27 +2,51 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:pages="clr-namespace:Mi_nU.Pages"
+             xmlns:controls="clr-namespace:Mi_nU.Controls"
+             xmlns:themes="clr-namespace:Mi_nU.Themes"
              x:Class="Mi_nU.Pages.NewGroupPage"
              Title="Новая группа">
 
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Padding="16,12" RowSpacing="8">
-        <Entry x:Name="TitleEntry" AutomationId="NewGroupTitle" Placeholder="Название группы" />
-        <Label Grid.Row="1" x:Name="MembersLabel" AutomationId="NewGroupMembers" Text="Участники не выбраны" />
-        <Entry Grid.Row="2" x:Name="SearchEntry" AutomationId="NewGroupSearch" Placeholder="Добавить: логин или имя, минимум 2 символа"
-               IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" TextChanged="OnSearchChanged" />
-        <Label Grid.Row="3" x:Name="ErrorLabel" AutomationId="NewGroupError" IsVisible="False"
-               TextColor="{AppThemeBinding Light=#B3261E, Dark=#F2B8B5}" />
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Padding="16,8,16,16" RowSpacing="12" MaximumWidthRequest="{StaticResource ReadableWidth}">
+        <VerticalStackLayout Spacing="6">
+            <Label Text="Название" Style="{StaticResource FieldLabel}" />
+            <Border Style="{StaticResource Field}">
+                <Entry x:Name="TitleEntry" AutomationId="NewGroupTitle" Placeholder="Например, Команда" />
+            </Border>
+        </VerticalStackLayout>
+
+        <Label Grid.Row="1" x:Name="MembersLabel" AutomationId="NewGroupMembers" Text="Участники не выбраны" Style="{StaticResource Caption}" />
+
+        <Border Grid.Row="2" Style="{StaticResource FilledField}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <Label Text="{x:Static themes:Icons.Search}" Style="{StaticResource Icon}" FontSize="20" />
+                <Entry Grid.Column="1" x:Name="SearchEntry" AutomationId="NewGroupSearch" Placeholder="Добавить участников"
+                       IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" TextChanged="OnSearchChanged" />
+            </Grid>
+        </Border>
+
+        <Label Grid.Row="3" x:Name="ErrorLabel" AutomationId="NewGroupError" IsVisible="False" Style="{StaticResource Error}" />
+
         <CollectionView Grid.Row="4" x:Name="Results" AutomationId="NewGroupResults" SelectionMode="Single" SelectionChanged="OnUserSelected">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="pages:GroupUserRow">
-                    <VerticalStackLayout Padding="8,10">
-                        <Label Text="{Binding Name}" FontAttributes="Bold" />
-                        <Label Text="{Binding UserName}" FontSize="12"
-                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
-                    </VerticalStackLayout>
+                    <Grid ColumnDefinitions="44,*,Auto" ColumnSpacing="12" Padding="8,8">
+                        <controls:Avatar Name="{Binding Name}" Seed="{Binding Name}" Size="44" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                            <Label Text="{Binding Name}" Style="{StaticResource Name}" />
+                            <Label Text="{Binding UserName}" Style="{StaticResource Caption}" />
+                        </VerticalStackLayout>
+                        <Border Grid.Column="2" WidthRequest="24" HeightRequest="24" StrokeShape="Ellipse" VerticalOptions="Center"
+                                StrokeThickness="2" Stroke="{DynamicResource InputBorder}" IsVisible="{Binding NotSelected}" />
+                        <Border Grid.Column="2" WidthRequest="24" HeightRequest="24" StrokeShape="Ellipse" VerticalOptions="Center"
+                                StrokeThickness="0" BackgroundColor="{DynamicResource Accent}" IsVisible="{Binding Selected}">
+                            <Label Text="{x:Static themes:Icons.Check}" Style="{StaticResource Icon}" FontSize="16" TextColor="{DynamicResource OnAccent}" />
+                        </Border>
+                    </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+
         <Button Grid.Row="5" x:Name="CreateButton" AutomationId="NewGroupCreate" Text="Создать группу" Clicked="OnCreateClicked" />
     </Grid>
 

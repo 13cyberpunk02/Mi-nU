@@ -5,8 +5,8 @@
              x:Class="Mi_nU.App">
     <Application.Resources>
         <ResourceDictionary>
+            <!-- The light or dark theme is merged in code, see ThemeManager. -->
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
                 <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

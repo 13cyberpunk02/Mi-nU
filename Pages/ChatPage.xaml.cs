@@ -9,10 +9,18 @@ namespace Mi_nU.Pages
     /// <summary><see cref="Id"/> is null until the server has accepted the message.</summary>
     public record MessageRow(long? Id, Guid ClientMessageId, string Text, string Sender, bool ShowSender, bool IsMine, DateTimeOffset SentAt, MessageState State)
     {
+        /// <summary>The first message of a day gets the day above it.</summary>
+        public bool ShowDay { get; init; } = true;
+        /// <summary>Follows a message from the same person, so it sits closer and repeats no name.</summary>
+        public bool Continues { get; init; }
+
+        public string Day => Formatting.Day(SentAt);
+        public bool ShowSenderName => ShowSender && !Continues;
+        public Thickness Spacing => Continues ? new Thickness(0, 2, 0, 0) : new Thickness(0, 8, 0, 0);
         public string Status => State switch
         {
             MessageState.Sending => "Отправляется…",
-            MessageState.Failed => "Не отправлено. Нажмите, чтобы повторить",
+            MessageState.Failed => "Не отправлено · нажмите, чтобы повторить",
             _ => Formatting.Time(SentAt),
         };
     }
@@ -20,10 +28,15 @@ namespace Mi_nU.Pages
     public class MessageTemplateSelector : DataTemplateSelector
     {
         public DataTemplate? Mine { get; set; }
+        public DataTemplate? MineFailed { get; set; }
         public DataTemplate? Other { get; set; }
 
-        protected override DataTemplate? OnSelectTemplate(object item, BindableObject container) =>
-            ((MessageRow)item).IsMine ? Mine : Other;
+        protected override DataTemplate? OnSelectTemplate(object item, BindableObject container) => item switch
+        {
+            MessageRow { IsMine: false } => Other,
+            MessageRow { State: MessageState.Failed } => MineFailed,
+            _ => Mine,
+        };
     }
 
     public partial class ChatPage : ContentPage, IQueryAttributable
@@ -52,6 +65,11 @@ namespace Mi_nU.Pages
         {
             _chat = (ChatDto)query["chat"];
             Title = _chat.Title;
+            HeaderName.Text = _chat.Title;
+            HeaderAvatar.Name = _chat.Title;
+            HeaderAvatar.Seed = new ChatRow(_chat).Seed;
+            HeaderSubtitle.Text = _chat.Kind == ChatKind.Group ? $"Участников: {_chat.Members.Count}" : "";
+            HeaderSubtitle.IsVisible = _chat.Kind == ChatKind.Group;
         }
 
         protected override async void OnAppearing()
@@ -149,8 +167,9 @@ namespace Mi_nU.Pages
                 return;
 
             MessageEntry.Text = "";
-            var row = new MessageRow(null, Guid.NewGuid(), text, "", false, true, DateTimeOffset.UtcNow, MessageState.Sending);
+            var row = new MessageRow(null, Guid.NewGuid(), text, _auth.Session?.User.DisplayName ?? "", false, true, DateTimeOffset.UtcNow, MessageState.Sending);
             _rows.Add(row);
+            Relink(_rows.Count - 1);
             ScrollToEnd();
             await SendAsync(row);
         }
@@ -178,21 +197,19 @@ namespace Mi_nU.Pages
             }
             catch (Exception)
             {
-                if (_rows.Contains(row))
-                    Replace(row, row with { State = MessageState.Failed });
+                Replace(row, row with { State = MessageState.Failed });
             }
         }
 
         void Merge(MessageDto message)
         {
             var row = ToRow(message);
-            for (var i = 0; i < _rows.Count; i++)
+            var existing = IndexOf(message.ClientMessageId);
+            if (existing >= 0)
             {
-                if (_rows[i].ClientMessageId == message.ClientMessageId)
-                {
-                    _rows[i] = row;
-                    return;
-                }
+                _rows[existing] = row;
+                Relink(existing);
+                return;
             }
 
             // Unsent messages stay last, after everything the server has ordered.
@@ -200,6 +217,36 @@ namespace Mi_nU.Pages
             while (index < _rows.Count && _rows[index].Id is { } id && id < message.Id)
                 index++;
             _rows.Insert(index, row);
+            Relink(index);
+        }
+
+        // Rows are records and get replaced, so they are found by the id the client gave them.
+        int IndexOf(Guid clientMessageId)
+        {
+            for (var i = 0; i < _rows.Count; i++)
+            {
+                if (_rows[i].ClientMessageId == clientMessageId)
+                    return i;
+            }
+            return -1;
+        }
+
+        // A row's day header and grouping depend on the row before it, so the next row may change too.
+        void Relink(int index)
+        {
+            for (var i = Math.Max(index, 0); i <= index + 1 && i < _rows.Count; i++)
+            {
+                var row = _rows[i];
+                var previous = i > 0 ? _rows[i - 1] : null;
+                var sameDay = previous is not null && previous.SentAt.ToLocalTime().Date == row.SentAt.ToLocalTime().Date;
+                var linked = row with
+                {
+                    ShowDay = !sameDay,
+                    Continues = sameDay && previous!.IsMine == row.IsMine && previous.Sender == row.Sender,
+                };
+                if (linked != row)
+                    _rows[i] = linked;
+            }
         }
 
         MessageRow ToRow(MessageDto message)
@@ -211,9 +258,9 @@ namespace Mi_nU.Pages
 
         void Replace(MessageRow row, MessageRow replacement)
         {
-            var index = _rows.IndexOf(row);
+            var index = IndexOf(row.ClientMessageId);
             if (index >= 0)
-                _rows[index] = replacement;
+                _rows[index] = replacement with { ShowDay = _rows[index].ShowDay, Continues = _rows[index].Continues };
         }
 
         void ScrollToEnd()
