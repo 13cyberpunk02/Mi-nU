@@ -32,8 +32,8 @@ namespace Mi_nU.Themes
         public static void UseStatusBarIcons(bool darkTheme)
         {
 #if ANDROID
-            if (Platform.CurrentActivity?.Window is { } window)
-                AndroidX.Core.View.WindowCompat.GetInsetsController(window, window.DecorView).AppearanceLightStatusBars = !darkTheme;
+            if (Platform.CurrentActivity?.Window is { } window && AndroidX.Core.View.WindowCompat.GetInsetsController(window, window.DecorView) is { } insets)
+                insets.AppearanceLightStatusBars = !darkTheme;
 #endif
         }
     }

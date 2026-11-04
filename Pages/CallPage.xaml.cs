@@ -171,10 +171,27 @@ namespace Mi_nU.Pages
 #if DEBUG
             var frames = string.Join(" ", _tiles.Where(tile => tile.Tile.IsVisible).Select(tile => tile.Video.FramesRendered).Append(LocalVideo.FramesRendered));
             DebugLabel.Text = $"rendered {frames}\n{await _calls.DebugStatsAsync()}";
+            // For the device tests: Android's UI dump never finishes while video plays, so they read the state and button positions here.
+            Console.WriteLine($"CALLDBG muted={_calls.IsMuted} mute={CenterOf(MuteButton)} hangup={CenterOf(HangUpButton)} {DebugLabel.Text.Replace('\n', ';')}");
 #else
             await Task.CompletedTask;
 #endif
         }
+
+#if DEBUG
+        static string CenterOf(View view)
+        {
+#if ANDROID
+            if (view.Handler?.PlatformView is Android.Views.View native)
+            {
+                var at = new int[2];
+                native.GetLocationOnScreen(at);
+                return $"{at[0] + native.Width / 2},{at[1] + native.Height / 2}";
+            }
+#endif
+            return "";
+        }
+#endif
 
         void OnMuteClicked(object? sender, EventArgs e) => _calls.SetMuted(!_calls.IsMuted);
 

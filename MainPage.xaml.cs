@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using Mi_nU.Services;
 using MinU.Contracts;
 
@@ -50,24 +50,76 @@ namespace Mi_nU
             _api = api;
             _hub = hub;
             ChatList.ItemsSource = _chats;
+            SizeChanged += (_, _) => UpdateLayout();
+            Current = this;
         }
+
+        /// <summary>The chat list Shell created; pages that start a chat open it through here.</summary>
+        public static MainPage? Current { get; private set; }
+
+        /// <summary>Wide enough to show the open chat beside the list.</summary>
+        const double TwoPaneWidth = 900;
+        const double ListWidth = 340;
+
+        bool _twoPane;
+        bool _visible;
 
         protected override async void OnAppearing()
         {
             base.OnAppearing();
+            _visible = true;
             _hub.MessageReceived += OnMessageReceived;
             _hub.ChatCreated += OnChatCreated;
             _hub.Connected += OnConnected;
             _hub.Start();
+            if (_twoPane && Detail.ChatId is not null)
+                Detail.Activate();
             await ReloadAsync();
         }
 
         protected override void OnDisappearing()
         {
             base.OnDisappearing();
+            _visible = false;
             _hub.MessageReceived -= OnMessageReceived;
             _hub.ChatCreated -= OnChatCreated;
             _hub.Connected -= OnConnected;
+            Detail.Deactivate();
+        }
+
+        void UpdateLayout()
+        {
+            var twoPane = Width >= TwoPaneWidth;
+            if (twoPane == _twoPane)
+                return;
+
+            _twoPane = twoPane;
+            Root.ColumnDefinitions[0].Width = twoPane ? new GridLength(ListWidth) : GridLength.Star;
+            Root.ColumnDefinitions[1].Width = twoPane ? GridLength.Star : new GridLength(0);
+            DetailPane.IsVisible = twoPane;
+            if (twoPane && _visible && Detail.ChatId is not null)
+                Detail.Activate();
+            else if (!twoPane)
+                Detail.Deactivate();
+            SelectOpenChat();
+        }
+
+        // In two panes the open chat stays highlighted in the list, also after the list is rebuilt.
+        void SelectOpenChat()
+        {
+            var open = _twoPane ? (ChatList.ItemsSource as IEnumerable<ChatRow>)?.FirstOrDefault(row => row.Chat.Id == Detail.ChatId) : null;
+            if (!Equals(ChatList.SelectedItem, open))
+                ChatList.SelectedItem = open;
+        }
+
+        void OpenInPane(ChatDto chat)
+        {
+            Detail.Show(chat);
+            Detail.IsVisible = true;
+            NoChatHint.IsVisible = false;
+            if (_visible)
+                Detail.Activate();
+            SelectOpenChat();
         }
 
         async Task ReloadAsync()
@@ -130,12 +182,14 @@ namespace Mi_nU
                     ChatList.ItemsSource = _chats;
                 EmptyTitle.Text = "Чатов пока нет";
                 EmptyHint.Text = "Нажмите «+», чтобы найти собеседника или создать группу";
+                SelectOpenChat();
                 return;
             }
 
             ChatList.ItemsSource = _chats.Where(row => row.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
             EmptyTitle.Text = "Ничего не найдено";
             EmptyHint.Text = "Новых собеседников ищите через «+»";
+            SelectOpenChat();
         }
 
         async void OnChatSelected(object? sender, SelectionChangedEventArgs e)
@@ -143,8 +197,23 @@ namespace Mi_nU
             if (e.CurrentSelection.FirstOrDefault() is not ChatRow row)
                 return;
 
+            if (_twoPane)
+            {
+                OpenInPane(row.Chat);
+                return;
+            }
+
             ChatList.SelectedItem = null;
             await Shell.Current.GoToAsync("chat", new ShellNavigationQueryParameters { ["chat"] = row.Chat });
+        }
+
+        /// <summary>Opens a chat the way this window shows them: beside the list, or as its own page.</summary>
+        public async Task OpenChatAsync(ChatDto chat)
+        {
+            if (_twoPane)
+                OpenInPane(chat);
+            else
+                await Shell.Current.GoToAsync("chat", new ShellNavigationQueryParameters { ["chat"] = chat });
         }
 
         async void OnNewChatClicked(object? sender, EventArgs e) => await Shell.Current.GoToAsync("newchat");

@@ -1,100 +1,13 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- A chat on its own screen, as on a phone; a wide window shows the same ChatView next to the list instead. -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:pages="clr-namespace:Mi_nU.Pages"
              xmlns:controls="clr-namespace:Mi_nU.Controls"
-             xmlns:themes="clr-namespace:Mi_nU.Themes"
              x:Class="Mi_nU.Pages.ChatPage"
              BackgroundColor="{DynamicResource ChatBackground}"
+             Shell.NavBarIsVisible="False"
              SafeAreaEdges="All">
 
-    <Shell.TitleView>
-        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10" VerticalOptions="Center">
-            <controls:Avatar x:Name="HeaderAvatar" Size="36" VerticalOptions="Center" />
-            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                <Label x:Name="HeaderName" Style="{StaticResource Name}" />
-                <Label x:Name="HeaderSubtitle" Style="{StaticResource Small}" IsVisible="False" />
-            </VerticalStackLayout>
-            <Button Grid.Column="2" AutomationId="ChatCallAudio" Text="{x:Static themes:Icons.Phone}" Style="{StaticResource IconButton}"
-                    SemanticProperties.Description="Позвонить" Clicked="OnAudioCallClicked" />
-            <Button Grid.Column="3" AutomationId="ChatCallVideo" Text="{x:Static themes:Icons.Video}" Style="{StaticResource IconButton}"
-                    SemanticProperties.Description="Видеозвонок" Clicked="OnVideoCallClicked" Margin="0,0,8,0" />
-        </Grid>
-    </Shell.TitleView>
-
-    <ContentPage.Resources>
-        <DataTemplate x:Key="MineTemplate" x:DataType="pages:MessageRow">
-            <VerticalStackLayout Padding="64,0,12,0" Margin="{Binding Spacing}">
-                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
-                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
-                </Border>
-                <Border HorizontalOptions="End" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
-                        BackgroundColor="{DynamicResource BubbleMine}">
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="{Binding Text}" LineHeight="1.25" />
-                        <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource BubbleMineMuted}" HorizontalOptions="End" />
-                    </VerticalStackLayout>
-                </Border>
-            </VerticalStackLayout>
-        </DataTemplate>
-        <DataTemplate x:Key="MineFailedTemplate" x:DataType="pages:MessageRow">
-            <VerticalStackLayout Padding="64,0,12,0" Margin="{Binding Spacing}">
-                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
-                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
-                </Border>
-                <Border HorizontalOptions="End" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
-                        BackgroundColor="{DynamicResource BubbleFailed}">
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="{Binding Text}" LineHeight="1.25" />
-                        <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource DangerText}" HorizontalOptions="End" />
-                    </VerticalStackLayout>
-                </Border>
-            </VerticalStackLayout>
-        </DataTemplate>
-        <DataTemplate x:Key="OtherTemplate" x:DataType="pages:MessageRow">
-            <VerticalStackLayout Padding="12,0,64,0" Margin="{Binding Spacing}">
-                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
-                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
-                </Border>
-                <Border HorizontalOptions="Start" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,6,18"
-                        BackgroundColor="{DynamicResource BubbleOther}">
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="{Binding Sender}" IsVisible="{Binding ShowSenderName}" FontFamily="InterSemiBold" FontSize="13" TextColor="{DynamicResource AccentText}" />
-                        <Label Text="{Binding Text}" LineHeight="1.25" />
-                        <Label Text="{Binding Status}" Style="{StaticResource Small}" HorizontalOptions="End" />
-                    </VerticalStackLayout>
-                </Border>
-            </VerticalStackLayout>
-        </DataTemplate>
-        <pages:MessageTemplateSelector x:Key="MessageSelector"
-                                       Mine="{StaticResource MineTemplate}"
-                                       MineFailed="{StaticResource MineFailedTemplate}"
-                                       Other="{StaticResource OtherTemplate}" />
-    </ContentPage.Resources>
-
-    <Grid RowDefinitions="Auto,*,Auto,Auto">
-        <Button x:Name="OlderButton" AutomationId="ChatOlder" Text="Показать предыдущие" Style="{StaticResource GhostButton}"
-                IsVisible="False" HorizontalOptions="Center" Clicked="OnOlderClicked" />
-
-        <CollectionView Grid.Row="1" x:Name="Messages" AutomationId="ChatMessages" SelectionMode="Single"
-                        ItemTemplate="{StaticResource MessageSelector}" SelectionChanged="OnMessageSelected"
-                        MaximumWidthRequest="{StaticResource ReadableWidth}">
-            <CollectionView.Footer>
-                <BoxView HeightRequest="12" Color="Transparent" />
-            </CollectionView.Footer>
-        </CollectionView>
-
-        <Label Grid.Row="2" x:Name="ErrorLabel" AutomationId="ChatError" IsVisible="False" Margin="16,4" Style="{StaticResource Error}" />
-
-        <Grid Grid.Row="3" BackgroundColor="{DynamicResource Surface}" Padding="12,8">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
-                <Border Style="{StaticResource FilledField}" StrokeShape="RoundRectangle 22">
-                    <Entry x:Name="MessageEntry" AutomationId="ChatInput" Placeholder="Сообщение" Keyboard="Chat" ReturnType="Send" Completed="OnSendClicked" />
-                </Border>
-                <Button Grid.Column="1" AutomationId="ChatSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
-                        SemanticProperties.Description="Отправить" VerticalOptions="End" Clicked="OnSendClicked" />
-            </Grid>
-        </Grid>
-    </Grid>
+    <controls:ChatView x:Name="View" ShowBack="True" />
 
 </ContentPage>

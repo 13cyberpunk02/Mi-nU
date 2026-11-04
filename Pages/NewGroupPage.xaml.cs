@@ -75,7 +75,9 @@ namespace Mi_nU.Pages
             try
             {
                 var chat = await _api.CreateGroupChatAsync(title, [.. _selected.Keys]);
-                await Shell.Current.GoToAsync("../chat", new ShellNavigationQueryParameters { ["chat"] = chat });
+                await Shell.Current.GoToAsync("..");
+                if (MainPage.Current is { } main)
+                    await main.OpenChatAsync(chat);
             }
             catch (ApiException error)
             {

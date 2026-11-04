@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- One conversation: a page of its own on a phone, the right-hand pane in a wide window. -->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Mi_nU.Controls"
+             xmlns:themes="clr-namespace:Mi_nU.Themes"
+             x:Class="Mi_nU.Controls.ChatView"
+             BackgroundColor="{DynamicResource ChatBackground}">
+
+    <ContentView.Resources>
+        <DataTemplate x:Key="MineTemplate" x:DataType="controls:MessageRow">
+            <VerticalStackLayout Padding="64,0,12,0" Margin="{Binding Spacing}">
+                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
+                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
+                </Border>
+                <Border HorizontalOptions="End" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
+                        BackgroundColor="{DynamicResource BubbleMine}" MaximumWidthRequest="520">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="{Binding Text}" LineHeight="1.25" />
+                        <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource BubbleMineMuted}" HorizontalOptions="End" />
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </DataTemplate>
+        <DataTemplate x:Key="MineFailedTemplate" x:DataType="controls:MessageRow">
+            <VerticalStackLayout Padding="64,0,12,0" Margin="{Binding Spacing}">
+                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
+                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
+                </Border>
+                <Border HorizontalOptions="End" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
+                        BackgroundColor="{DynamicResource BubbleFailed}" MaximumWidthRequest="520">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="{Binding Text}" LineHeight="1.25" />
+                        <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource DangerText}" HorizontalOptions="End" />
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </DataTemplate>
+        <DataTemplate x:Key="OtherTemplate" x:DataType="controls:MessageRow">
+            <VerticalStackLayout Padding="12,0,64,0" Margin="{Binding Spacing}">
+                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
+                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
+                </Border>
+                <Border HorizontalOptions="Start" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,6,18"
+                        BackgroundColor="{DynamicResource BubbleOther}" MaximumWidthRequest="520">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="{Binding Sender}" IsVisible="{Binding ShowSenderName}" FontFamily="InterSemiBold" FontSize="13" TextColor="{DynamicResource AccentText}" />
+                        <Label Text="{Binding Text}" LineHeight="1.25" />
+                        <Label Text="{Binding Status}" Style="{StaticResource Small}" HorizontalOptions="End" />
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </DataTemplate>
+        <controls:MessageTemplateSelector x:Key="MessageSelector"
+                                          Mine="{StaticResource MineTemplate}"
+                                          MineFailed="{StaticResource MineFailedTemplate}"
+                                          Other="{StaticResource OtherTemplate}" />
+    </ContentView.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+        <Grid BackgroundColor="{DynamicResource Surface}" Padding="8,8,12,8" ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
+            <Button x:Name="BackButton" AutomationId="ChatBack" Text="{x:Static themes:Icons.Back}" Style="{StaticResource IconButton}"
+                    FontSize="26" SemanticProperties.Description="Назад к чатам" Clicked="OnBackClicked" />
+            <controls:Avatar Grid.Column="1" x:Name="HeaderAvatar" Size="40" VerticalOptions="Center" Margin="4,0,0,0" />
+            <VerticalStackLayout Grid.Column="2" VerticalOptions="Center">
+                <Label x:Name="HeaderName" AutomationId="ChatTitle" Style="{StaticResource Name}" />
+                <Label x:Name="HeaderSubtitle" Style="{StaticResource Small}" IsVisible="False" />
+            </VerticalStackLayout>
+            <Button Grid.Column="3" AutomationId="ChatCallAudio" Text="{x:Static themes:Icons.Phone}" Style="{StaticResource IconButton}"
+                    SemanticProperties.Description="Позвонить" Clicked="OnAudioCallClicked" />
+            <Button Grid.Column="4" AutomationId="ChatCallVideo" Text="{x:Static themes:Icons.Video}" Style="{StaticResource IconButton}"
+                    SemanticProperties.Description="Видеозвонок" Clicked="OnVideoCallClicked" />
+        </Grid>
+        <BoxView Grid.Row="1" Style="{StaticResource Divider}" />
+
+        <Grid Grid.Row="2" RowDefinitions="Auto,*">
+            <Button x:Name="OlderButton" AutomationId="ChatOlder" Text="Показать предыдущие" Style="{StaticResource GhostButton}"
+                    IsVisible="False" HorizontalOptions="Center" Clicked="OnOlderClicked" />
+            <CollectionView Grid.Row="1" x:Name="Messages" AutomationId="ChatMessages" SelectionMode="Single"
+                            ItemTemplate="{StaticResource MessageSelector}" SelectionChanged="OnMessageSelected"
+                            MaximumWidthRequest="{StaticResource ReadableWidth}">
+                <CollectionView.Footer>
+                    <BoxView HeightRequest="12" Color="Transparent" />
+                </CollectionView.Footer>
+            </CollectionView>
+        </Grid>
+
+        <Label Grid.Row="3" x:Name="ErrorLabel" AutomationId="ChatError" IsVisible="False" Margin="16,4" Style="{StaticResource Error}" />
+
+        <Grid Grid.Row="4" BackgroundColor="{DynamicResource Surface}" Padding="12,8">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
+                <Border Style="{StaticResource FilledField}" StrokeShape="RoundRectangle 22">
+                    <Entry x:Name="MessageEntry" AutomationId="ChatInput" Placeholder="Сообщение" Keyboard="Chat" ReturnType="Send" Completed="OnSendClicked" />
+                </Border>
+                <Button Grid.Column="1" AutomationId="ChatSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
+                        SemanticProperties.Description="Отправить" VerticalOptions="End" Clicked="OnSendClicked" />
+            </Grid>
+        </Grid>
+    </Grid>
+
+</ContentView>

@@ -7,7 +7,9 @@
              x:Class="Mi_nU.MainPage"
              Shell.NavBarIsVisible="False">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <!-- A wide window shows the open chat beside the list; the code-behind switches the columns. -->
+    <Grid x:Name="Root" ColumnDefinitions="*,0">
+    <Grid x:Name="ListPane" RowDefinitions="Auto,Auto,*">
         <Grid ColumnDefinitions="*,Auto" Padding="16,16,16,4">
             <Label Text="Чаты" Style="{StaticResource Title}" VerticalTextAlignment="Center" />
             <Button Grid.Column="1" x:Name="ProfileButton" AutomationId="MainProfile" Text="Я" FontSize="15"
@@ -66,6 +68,18 @@
                     SemanticProperties.Description="Новый чат или группа"
                     HorizontalOptions="End" VerticalOptions="End" Margin="20,24" Clicked="OnNewChatClicked" />
         </Grid>
+    </Grid>
+
+    <Grid Grid.Column="1" x:Name="DetailPane" IsVisible="False" ColumnDefinitions="1,*">
+        <BoxView Color="{DynamicResource Line}" WidthRequest="1" />
+        <Grid Grid.Column="1" BackgroundColor="{DynamicResource ChatBackground}">
+            <VerticalStackLayout x:Name="NoChatHint" Spacing="8" VerticalOptions="Center" HorizontalOptions="Center">
+                <Label Text="Выберите чат" Style="{StaticResource Heading}" HorizontalTextAlignment="Center" />
+                <Label Text="или начните новый с помощью «+»" Style="{StaticResource Caption}" HorizontalTextAlignment="Center" />
+            </VerticalStackLayout>
+            <controls:ChatView x:Name="Detail" ShowBack="False" IsVisible="False" />
+        </Grid>
+    </Grid>
     </Grid>
 
 </ContentPage>
