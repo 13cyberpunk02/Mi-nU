@@ -1,0 +1,5 @@
+# Caddy gets and renews the HTTPS certificate for API_DOMAIN on its own, and passes
+# requests on to MinU.Server, SignalR's WebSockets included.
+{$API_DOMAIN} {
+	reverse_proxy server:8080
+}

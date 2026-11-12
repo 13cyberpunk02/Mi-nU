@@ -23,7 +23,12 @@ public class ServerFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:Default", $"Host=127.0.0.1;Port=5433;Database={_database};Username=minu;Password=minu_dev");
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("Auth:AttemptsPerMinute", "1000");
+        builder.UseSetting("Turn:Secret", TurnSecret);
+        builder.UseSetting("Turn:Urls:0", "turn:turn.example.com:3478?transport=udp");
+        builder.UseSetting("Turn:Urls:1", "turns:turn.example.com:5349?transport=tcp");
     }
+
+    public const string TurnSecret = "test-turn-secret";
 
     public Task InitializeAsync() => Task.CompletedTask;
 
@@ -127,6 +132,24 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
             .WithUrl(new Uri(server.Server.BaseAddress, "/hubs/chat"), options => options.HttpMessageHandlerFactory = _ => server.Server.CreateHandler())
             .Build();
         await Assert.ThrowsAnyAsync<Exception>(() => hub.StartAsync());
+    }
+
+    [Fact]
+    public async Task Ice_servers_come_with_credentials_coturn_accepts()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var ice = (await alice.Http.GetFromJsonAsync<IceServersDto>("/api/ice-servers"))!;
+
+        Assert.Equal(2, ice.Urls.Count);
+        var parts = ice.Username.Split(':');
+        Assert.Equal(alice.User.Id.ToString("N"), parts[1]);
+        Assert.InRange(DateTimeOffset.FromUnixTimeSeconds(long.Parse(parts[0])), DateTimeOffset.UtcNow.AddHours(11), DateTimeOffset.UtcNow.AddHours(13));
+        // The check coturn does with use-auth-secret.
+        var expected = Convert.ToBase64String(System.Security.Cryptography.HMACSHA1.HashData(
+            System.Text.Encoding.UTF8.GetBytes(ServerFixture.TurnSecret), System.Text.Encoding.UTF8.GetBytes(ice.Username)));
+        Assert.Equal(expected, ice.Credential);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await server.CreateClient().GetAsync("/api/ice-servers")).StatusCode);
     }
 
     [Fact]

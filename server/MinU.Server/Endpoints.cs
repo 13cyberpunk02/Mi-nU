@@ -68,6 +68,9 @@ public static partial class Endpoints
     {
         var api = app.MapGroup("/api").RequireAuthorization();
 
+        api.MapGet("/ice-servers", (ClaimsPrincipal principal, IConfiguration config) =>
+            Results.Ok(TurnCredentials.Issue(config, UserId(principal))));
+
         api.MapGet("/users", async (string? query, AppDbContext db, ClaimsPrincipal principal) =>
         {
             var text = query?.Trim() ?? "";

@@ -18,11 +18,16 @@ namespace Mi_nU.Services
     [JsonSerializable(typeof(List<ChatDto>))]
     [JsonSerializable(typeof(List<UserDto>))]
     [JsonSerializable(typeof(List<MessageDto>))]
+    [JsonSerializable(typeof(IceServersDto))]
     internal partial class ChatJsonContext : JsonSerializerContext;
 
     public class ChatApi(AuthService auth)
     {
         readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
+
+        /// <summary>STUN and TURN servers with fresh credentials; fetched for every call, so they never expire mid-call.</summary>
+        public Task<IceServersDto> GetIceServersAsync() =>
+            SendAsync(HttpMethod.Get, "/api/ice-servers", null, ChatJsonContext.Default.IceServersDto);
 
         public Task<List<ChatDto>> GetChatsAsync() =>
             SendAsync(HttpMethod.Get, "/api/chats", null, ChatJsonContext.Default.ListChatDto);

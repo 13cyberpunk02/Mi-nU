@@ -1,0 +1,58 @@
+# Mi`nU's server on a Linux machine: PostgreSQL, MinU.Server, and Caddy in front for HTTPS.
+# See server/deploy/README.md. Settings come from .env next to this file (copy .env.example).
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: minu
+      POSTGRES_USER: minu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U minu -d minu"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build: ..
+    image: minu-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Kerberos is never used here, and trying it only logs a missing library.
+      ConnectionStrings__Default: Host=postgres;Database=minu;Username=minu;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable
+      Database__MigrateOnStartup: "true"
+      Jwt__Key: ${JWT_KEY:?set JWT_KEY in .env}
+      # Only Caddy reaches the server, so the client address it forwards can be trusted.
+      ReverseProxy__Enabled: "true"
+      Turn__Secret: ${TURN_SECRET:?set TURN_SECRET in .env}
+      Turn__Urls__0: stun:${TURN_HOST:?set TURN_HOST in .env}:3478
+      Turn__Urls__1: turn:${TURN_HOST}:3478?transport=udp
+      Turn__Urls__2: turn:${TURN_HOST}:3478?transport=tcp
+      Turn__Urls__3: turns:${TURN_HOST}:5349?transport=tcp
+
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres:
+  caddy_data:
+  caddy_config:

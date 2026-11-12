@@ -20,14 +20,12 @@ namespace Mi_nU.Services
     /// </summary>
     public class CallService
     {
-        /// <summary>
-        /// Empty, so calls only connect when devices can reach each other directly.
-        /// Calls across the internet need STUN and TURN servers here.
-        /// </summary>
-        static readonly IceServer[] IceServers = [];
         static readonly TimeSpan RingTimeout = TimeSpan.FromSeconds(45);
 
         readonly ChatHubClient _hub;
+        readonly ChatApi _api;
+        /// <summary>The server's STUN and TURN for the current call; empty means only a shared network connects.</summary>
+        IceServer[] _iceServers = [];
         readonly Dictionary<string, CallPeer> _peers = [];
         PeerConnectionFactory? _factory;
         Guid? _callId;
@@ -40,9 +38,10 @@ namespace Mi_nU.Services
         CameraCapturer? _camera;
         IDisposable? _testPattern;
 
-        public CallService(AuthService auth, ChatHubClient hub)
+        public CallService(AuthService auth, ChatHubClient hub, ChatApi api)
         {
             _hub = hub;
+            _api = api;
             hub.CallInvited += invite => OnMainThread(() => OnInvited(invite));
             hub.CallParticipantJoined += participant => OnMainThread(() => OnParticipantJoined(participant));
             hub.CallParticipantLeft += participant => OnMainThread(() => OnParticipantLeft(participant));
@@ -140,6 +139,7 @@ namespace Mi_nU.Services
             try
             {
                 await _cleanup;
+                _iceServers = await GetIceServersAsync();
                 await StartMediaAsync(video);
                 var result = await join();
                 _callId = result.CallId;
@@ -151,6 +151,20 @@ namespace Mi_nU.Services
             {
                 Finish(null);
                 throw e as CallException ?? new CallException("Не удалось начать звонок. Проверьте подключение к сети.");
+            }
+        }
+
+        async Task<IceServer[]> GetIceServersAsync()
+        {
+            try
+            {
+                var ice = await _api.GetIceServersAsync();
+                return ice.Urls.Select(url => new IceServer(url, ice.Username, ice.Credential)).ToArray();
+            }
+            catch (ApiException)
+            {
+                // Without them a call still connects on a shared network, so it goes ahead.
+                return [];
             }
         }
 
@@ -193,7 +207,7 @@ namespace Mi_nU.Services
             if (_peers.TryGetValue(participant.ParticipantId, out var existing))
                 return existing;
 
-            var connection = _factory!.CreatePeerConnection(IceServers);
+            var connection = _factory!.CreatePeerConnection(_iceServers);
             connection.AddTrack(_audio!);
             if (LocalVideo is not null)
                 connection.AddTrack(LocalVideo);

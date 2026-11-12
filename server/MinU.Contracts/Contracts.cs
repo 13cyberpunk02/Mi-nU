@@ -17,6 +17,12 @@ public record ChatDto(Guid Id, ChatKind Kind, string Title, IReadOnlyList<UserDt
 /// <summary><see cref="Id"/> grows within the server, so it orders messages and pages history.</summary>
 public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, DateTimeOffset SentAt, Guid ClientMessageId);
 
+/// <summary>
+/// STUN and TURN servers for calls: one ICE server per URL, all with these credentials.
+/// Empty <see cref="Urls"/> when the server has no TURN configured; calls then only connect on a shared network.
+/// </summary>
+public record IceServersDto(IReadOnlyList<string> Urls, string Username, string Credential, DateTimeOffset ExpiresAt);
+
 public record CallInvite(Guid CallId, Guid ChatId, UserDto Caller, bool Video);
 public record CallParticipant(Guid CallId, string ParticipantId, UserDto User);
 public record CallSignal(Guid CallId, string FromParticipantId, string Type, string Payload);

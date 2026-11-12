@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -59,7 +60,23 @@ builder.Services.AddRateLimiter(options =>
 // An SDP offer with several tracks can outgrow SignalR's default limit of 32 KB.
 builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = 128 * 1024);
 
+// Behind a reverse proxy every request comes from the proxy, so sign-in limits would be shared by all users.
+// Only for a server the internet reaches through the proxy alone: anyone else could fake the header.
+var behindProxy = config.GetValue<bool>("ReverseProxy:Enabled");
+if (behindProxy)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
+
 var app = builder.Build();
+
+if (behindProxy)
+    app.UseForwardedHeaders();
 
 if (config.GetValue<bool>("Database:MigrateOnStartup"))
 {
