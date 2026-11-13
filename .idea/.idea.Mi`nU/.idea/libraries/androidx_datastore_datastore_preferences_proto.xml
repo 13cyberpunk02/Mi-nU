@@ -1,9 +1,0 @@
-<component name="libraryTable">
-  <library name="androidx.datastore.datastore-preferences-proto">
-    <CLASSES>
-      <root url="jar://$USER_HOME$/.nuget/packages/xamarin.androidx.datastore.preferences.proto/1.2.1.1/jar/androidx.datastore.datastore-preferences-proto.jar!/" />
-    </CLASSES>
-    <JAVADOC />
-    <SOURCES />
-  </library>
-</component>

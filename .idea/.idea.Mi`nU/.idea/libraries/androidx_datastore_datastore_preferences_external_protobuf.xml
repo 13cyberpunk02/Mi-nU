@@ -1,9 +1,0 @@
-<component name="libraryTable">
-  <library name="androidx.datastore.datastore-preferences-external-protobuf">
-    <CLASSES>
-      <root url="jar://$USER_HOME$/.nuget/packages/xamarin.androidx.datastore.preferences.external.protobuf/1.2.1.1/jar/androidx.datastore.datastore-preferences-external-protobuf.jar!/" />
-    </CLASSES>
-    <JAVADOC />
-    <SOURCES />
-  </library>
-</component>

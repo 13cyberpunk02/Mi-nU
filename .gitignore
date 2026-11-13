@@ -18,3 +18,6 @@ Platforms/Android/google-services.json
 
 # Firebase service account key on the server
 server/deploy/firebase.json
+
+# Rider settings
+.idea/

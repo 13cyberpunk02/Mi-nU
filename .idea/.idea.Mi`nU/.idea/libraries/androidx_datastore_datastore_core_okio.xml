@@ -1,9 +1,0 @@
-<component name="libraryTable">
-  <library name="androidx.datastore.datastore-core-okio">
-    <CLASSES>
-      <root url="jar://$USER_HOME$/.nuget/packages/xamarin.androidx.datastore.core.okio/1.2.1.1/jar/androidx.datastore.datastore-core-okio.jar!/" />
-    </CLASSES>
-    <JAVADOC />
-    <SOURCES />
-  </library>
-</component>
