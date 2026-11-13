@@ -9,6 +9,10 @@ public class ChatService(AppDbContext db)
     public Task<bool> IsMemberAsync(Guid chatId, Guid userId) =>
         db.ChatMembers.AnyAsync(x => x.ChatId == chatId && x.UserId == userId);
 
+    /// <summary>The group's name, or null for a direct chat, which goes by the other person's name.</summary>
+    public Task<string?> GroupTitleAsync(Guid chatId) =>
+        db.Chats.Where(chat => chat.Id == chatId && chat.Kind == ChatKind.Group).Select(chat => chat.Title).FirstOrDefaultAsync();
+
     public Task<List<Guid>> MemberIdsAsync(Guid chatId) =>
         db.ChatMembers.Where(x => x.ChatId == chatId).Select(x => x.UserId).ToListAsync();
 

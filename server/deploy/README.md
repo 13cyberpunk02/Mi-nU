@@ -54,6 +54,24 @@ Fill in `.env`:
 
 Don't change `JWT_KEY` without reason: everyone would have to sign in again. `.env` is kept out of git.
 
+### Firebase key for push notifications
+
+In the [Firebase console](https://console.firebase.google.com), open your project, then **Project settings → Service
+accounts → Generate new private key**. Copy the downloaded file to the server as `firebase.json`:
+
+```bash
+# from your computer:
+scp path/to/downloaded-key.json user@your-server:/tmp/firebase.json
+# on the server:
+sudo mv /tmp/firebase.json /opt/minu/server/deploy/firebase.json
+sudo chown 1654:1654 /opt/minu/server/deploy/firebase.json
+sudo chmod 600 /opt/minu/server/deploy/firebase.json
+```
+
+The server runs as uid `1654` in its container, so the file must belong to that user, or the server can't read the key
+and runs without notifications. The key lets anyone send notifications as your app: keep it out of the repository and
+don't pass it around. `firebase.json` is kept out of git.
+
 ## 4. Start
 
 ```bash
@@ -66,6 +84,9 @@ sudo docker compose logs -f server caddy
 The first image build takes a few minutes. On its first start the server creates the database tables itself. The
 `server` log then has one `fail` line about `__EFMigrationsHistory`: that's EF checking whether the migrations table
 exists yet, not an error. Caddy's log says when it got the certificate for `API_DOMAIN`.
+
+The `server` log should have no `push notifications are off` line. If it has, the server didn't find or couldn't read
+`firebase.json`: check the file's owner from step 3.
 
 ## 5. Check
 
@@ -140,4 +161,4 @@ Keep the copies somewhere other than this server.
 ## 10. Limitations
 
 - Run a single server instance: calls in progress are kept in its memory.
-- There are no push notifications: an incoming call arrives only while the app is open.
+- Push notifications are Android only; on Windows an incoming call arrives while the app is running.

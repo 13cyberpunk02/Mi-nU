@@ -73,4 +73,11 @@
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.14" />
 	</ItemGroup>
 
+	<!-- Push through Firebase Cloud Messaging. google-services.json comes from the Firebase console and stays out of git;
+	     without it the app builds and runs, only without push. -->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<PackageReference Include="Xamarin.Firebase.Messaging" Version="125.1.3" />
+		<GoogleServicesJson Include="Platforms\Android\google-services.json" Condition="Exists('Platforms\Android\google-services.json')" />
+	</ItemGroup>
+
 </Project>

@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using MinU.Contracts;
 using MinU.Server;
 
@@ -29,6 +31,19 @@ public class ServerFixture : WebApplicationFactory<Program>, IAsyncLifetime
     }
 
     public const string TurnSecret = "test-turn-secret";
+
+    /// <summary>Stands in for Firebase: records what would have been sent.</summary>
+    public FakePushSender Push { get; } = new();
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IPushSender>();
+            services.AddSingleton<IPushSender>(Push);
+        });
+        return base.CreateHost(builder);
+    }
 
     public Task InitializeAsync() => Task.CompletedTask;
 
@@ -65,8 +80,53 @@ public class ServerFixture : WebApplicationFactory<Program>, IAsyncLifetime
     }
 }
 
+public sealed class FakePushSender : IPushSender
+{
+    readonly List<(string Token, IReadOnlyDictionary<string, string> Data)> _sent = [];
+
+    /// <summary>Tokens Firebase would reject, as for an uninstalled app.</summary>
+    public HashSet<string> Invalid { get; } = [];
+
+    public Task<PushResult> SendAsync(string token, IReadOnlyDictionary<string, string> data, TimeSpan timeToLive, CancellationToken cancel)
+    {
+        lock (_sent)
+            _sent.Add((token, data));
+        return Task.FromResult(Invalid.Contains(token) ? PushResult.InvalidToken : PushResult.Sent);
+    }
+
+    /// <summary>Waits for a push of the given type to the token: pushes go out in the background.</summary>
+    public async Task<IReadOnlyDictionary<string, string>> NextAsync(string token, string type, int skip = 0)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            lock (_sent)
+            {
+                var match = _sent.Where(x => x.Token == token && x.Data[PushKeys.Type] == type).Skip(skip).FirstOrDefault();
+                if (match.Data is not null)
+                    return match.Data;
+            }
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"No {type} push to {token}");
+    }
+
+    public int CountTo(string token)
+    {
+        lock (_sent)
+            return _sent.Count(x => x.Token == token);
+    }
+}
+
 public sealed record Client(HttpClient Http, HubConnection Hub, UserDto User, string Token)
 {
+    public async Task<string> RegisterDeviceAsync()
+    {
+        var token = "fcm-" + Guid.NewGuid().ToString("N");
+        var response = await Http.PutAsJsonAsync("/api/devices", new RegisterDeviceRequest(token, "android"));
+        response.EnsureSuccessStatusCode();
+        return token;
+    }
+
     public async Task<ChatDto> DirectChatWithAsync(Client other)
     {
         var response = await Http.PostAsJsonAsync("/api/chats/direct", new CreateDirectChatRequest(other.User.Id));
@@ -150,6 +210,111 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         Assert.Equal(expected, ice.Credential);
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await server.CreateClient().GetAsync("/api/ice-servers")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Message_pushes_to_other_members_with_sender_and_group()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var carol = await server.RegisterAsync("carol");
+        var aliceDevice = await alice.RegisterDeviceAsync();
+        var bobDevice = await bob.RegisterDeviceAsync();
+        var carolDevice = await carol.RegisterDeviceAsync();
+
+        var direct = await alice.DirectChatWithAsync(bob);
+        await alice.SendAsync(direct.Id, "hello bob");
+        var push = await server.Push.NextAsync(bobDevice, PushKeys.TypeMessage);
+        Assert.Equal(("hello bob", "alice", "", direct.Id.ToString()), (push[PushKeys.Text], push[PushKeys.Sender], push[PushKeys.ChatTitle], push[PushKeys.ChatId]));
+
+        var group = await alice.GroupWithAsync("team", bob, carol);
+        await alice.SendAsync(group.Id, new string('x', Limits.PushTextMax + 50));
+        var groupPush = await server.Push.NextAsync(carolDevice, PushKeys.TypeMessage);
+        Assert.Equal("team", groupPush[PushKeys.ChatTitle]);
+        Assert.Equal(Limits.PushTextMax + 1, groupPush[PushKeys.Text].Length);
+
+        // The sender's own phone stays quiet.
+        await Task.Delay(300);
+        Assert.Equal(0, server.Push.CountTo(aliceDevice));
+    }
+
+    [Fact]
+    public async Task Call_pushes_ring_and_stop()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var bobDevice = await bob.RegisterDeviceAsync();
+        var chat = await alice.DirectChatWithAsync(bob);
+
+        var started = await alice.Hub.InvokeAsync<CallJoinResult>("StartCall", chat.Id, true);
+        var ring = await server.Push.NextAsync(bobDevice, PushKeys.TypeCall);
+        Assert.Equal((started.CallId.ToString(), "alice", "1"), (ring[PushKeys.CallId], ring[PushKeys.Sender], ring[PushKeys.Video]));
+
+        await alice.Hub.InvokeAsync("LeaveCall", started.CallId);
+        var ended = await server.Push.NextAsync(bobDevice, PushKeys.TypeCallEnded);
+        Assert.Equal(started.CallId.ToString(), ended[PushKeys.CallId]);
+    }
+
+    [Fact]
+    public async Task Device_belongs_to_whoever_signed_in_last_and_leaves_on_sign_out()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var carol = await server.RegisterAsync("carol");
+        var token = await alice.RegisterDeviceAsync();
+        (await bob.Http.PutAsJsonAsync("/api/devices", new RegisterDeviceRequest(token, "android"))).EnsureSuccessStatusCode();
+
+        // The phone is Bob's now: Carol's message to Alice must not show on it.
+        await carol.SendAsync((await carol.DirectChatWithAsync(alice)).Id, "for alice");
+        await carol.SendAsync((await carol.DirectChatWithAsync(bob)).Id, "for bob");
+        Assert.Equal("for bob", (await server.Push.NextAsync(token, PushKeys.TypeMessage))[PushKeys.Text]);
+
+        (await bob.Http.DeleteAsync($"/api/devices?token={token}")).EnsureSuccessStatusCode();
+        await carol.SendAsync((await carol.DirectChatWithAsync(bob)).Id, "after sign-out");
+        await Task.Delay(300);
+        Assert.Equal(1, server.Push.CountTo(token));
+    }
+
+    [Fact]
+    public async Task Rejected_tokens_are_forgotten()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var token = await bob.RegisterDeviceAsync();
+        server.Push.Invalid.Add(token);
+        var chat = await alice.DirectChatWithAsync(bob);
+
+        await alice.SendAsync(chat.Id, "first");
+        await server.Push.NextAsync(token, PushKeys.TypeMessage);
+        await Task.Delay(300);
+        await alice.SendAsync(chat.Id, "second");
+        await Task.Delay(300);
+        Assert.Equal(1, server.Push.CountTo(token));
+    }
+
+    [Fact]
+    public async Task Declining_from_a_notification_tells_the_caller()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var mallory = await server.RegisterAsync("mallory");
+        var chat = await alice.DirectChatWithAsync(bob);
+        var started = await alice.Hub.InvokeAsync<CallJoinResult>("StartCall", chat.Id, false);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await mallory.Http.PostAsync($"/api/calls/{started.CallId}/decline", null)).StatusCode);
+
+        var declined = new TaskCompletionSource<UserDto>();
+        using var _ = alice.Hub.On<Guid, UserDto>("CallDeclined", (_, user) => declined.TrySetResult(user));
+        (await bob.Http.PostAsync($"/api/calls/{started.CallId}/decline", null)).EnsureSuccessStatusCode();
+        Assert.Equal(bob.User.Id, (await declined.Task.WaitAsync(TimeSpan.FromSeconds(10))).Id);
+    }
+
+    [Fact]
+    public async Task Unknown_device_platforms_are_refused()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var response = await alice.Http.PutAsJsonAsync("/api/devices", new RegisterDeviceRequest("token", "ios"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

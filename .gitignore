@@ -12,3 +12,9 @@ obj/
 
 # Deployment secrets
 .env
+
+# Firebase config for this app's own project, downloaded from the Firebase console
+Platforms/Android/google-services.json
+
+# Firebase service account key on the server
+server/deploy/firebase.json

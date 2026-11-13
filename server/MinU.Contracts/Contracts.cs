@@ -23,6 +23,28 @@ public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, Date
 /// </summary>
 public record IceServersDto(IReadOnlyList<string> Urls, string Username, string Credential, DateTimeOffset ExpiresAt);
 
+/// <summary><see cref="Platform"/> is "android" for Firebase Cloud Messaging, the only one served so far.</summary>
+public record RegisterDeviceRequest(string Token, string Platform);
+
+/// <summary>
+/// Keys of the data in a push notification. Push carries only text pairs, and a data-only push
+/// lets the app decide what to show, for example nothing while it is open.
+/// </summary>
+public static class PushKeys
+{
+    public const string Type = "type";
+    public const string TypeMessage = "message";
+    public const string TypeCall = "call";
+    public const string TypeCallEnded = "call_ended";
+
+    public const string ChatId = "chatId";
+    public const string ChatTitle = "chatTitle";
+    public const string Sender = "sender";
+    public const string Text = "text";
+    public const string CallId = "callId";
+    public const string Video = "video";
+}
+
 public record CallInvite(Guid CallId, Guid ChatId, UserDto Caller, bool Video);
 public record CallParticipant(Guid CallId, string ParticipantId, UserDto User);
 public record CallSignal(Guid CallId, string FromParticipantId, string Type, string Payload);
@@ -40,6 +62,9 @@ public static class Limits
     public const int GroupMembersMax = 256;
     public const int MessageMax = 4000;
     public const int HistoryPageMax = 100;
+    public const int DeviceTokenMax = 4096;
+    /// <summary>How much of a message a push shows; the rest is read in the app.</summary>
+    public const int PushTextMax = 200;
 }
 
 public static class CallLimits

@@ -76,6 +76,14 @@ namespace Mi_nU.Services
         public Task SendCallSignalAsync(Guid callId, string toParticipantId, string type, string payload) =>
             Connection().InvokeAsync("SendCallSignal", callId, toParticipantId, type, payload);
 
+        /// <summary>For a call answered from a notification, when the app has only just started connecting.</summary>
+        public async Task WaitConnectedAsync(TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (_hub is not { State: HubConnectionState.Connected } && DateTime.UtcNow < deadline)
+                await Task.Delay(200);
+        }
+
         HubConnection Connection() =>
             _hub is { State: HubConnectionState.Connected } hub ? hub : throw new InvalidOperationException("Not connected.");
 

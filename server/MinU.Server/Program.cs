@@ -16,6 +16,29 @@ builder.Services.AddScoped<ChatService>();
 builder.Services.AddSingleton<CallRegistry>();
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
+// Push needs the Firebase service account key; without it the app works, only without notifications.
+builder.Services.AddSingleton<PushQueue>();
+builder.Services.AddHostedService<PushWorker>();
+builder.Services.AddSingleton<IPushSender>(services =>
+{
+    var logger = services.GetRequiredService<ILogger<FcmPushSender>>();
+    if (config["Firebase:CredentialsFile"] is not { Length: > 0 } file)
+    {
+        logger.LogWarning("Firebase:CredentialsFile is not set: push notifications are off");
+        return new NoPushSender();
+    }
+    try
+    {
+        return FcmPushSender.Create(file, logger);
+    }
+    catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
+    {
+        // A bad key must not take chats and calls down with it.
+        logger.LogError(e, "Cannot read the Firebase key {File}: push notifications are off", file);
+        return new NoPushSender();
+    }
+});
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters

@@ -42,12 +42,23 @@ public class Message
     public Guid ClientMessageId { get; set; }
 }
 
+/// <summary>Where to send a user's push notifications: one row per installed app.</summary>
+public class DeviceToken
+{
+    public long Id { get; set; }
+    public Guid UserId { get; set; }
+    public required string Token { get; set; }
+    public required string Platform { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Chat> Chats => Set<Chat>();
     public DbSet<ChatMember> ChatMembers => Set<ChatMember>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -77,6 +88,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             message.HasIndex(x => new { x.ChatId, x.Id });
             // A client resends with the same id after a lost connection; the index keeps that from duplicating.
             message.HasIndex(x => new { x.SenderId, x.ClientMessageId }).IsUnique();
+        });
+
+        model.Entity<DeviceToken>(device =>
+        {
+            device.Property(x => x.Token).HasMaxLength(Limits.DeviceTokenMax);
+            device.Property(x => x.Platform).HasMaxLength(16);
+            // A token belongs to one installed app, so whoever signs in on it last owns it.
+            device.HasIndex(x => x.Token).IsUnique();
+            device.HasIndex(x => x.UserId);
+            device.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

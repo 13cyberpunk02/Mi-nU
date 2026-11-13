@@ -41,17 +41,22 @@ namespace Mi_nU
         readonly AuthService _auth;
         readonly ChatApi _api;
         readonly ChatHubClient _hub;
+        readonly PushNotifications _push;
         readonly ObservableCollection<ChatRow> _chats = [];
+        bool _pushRegistered;
 
-        public MainPage(AuthService auth, ChatApi api, ChatHubClient hub)
+        public MainPage(AuthService auth, ChatApi api, ChatHubClient hub, PushNotifications push)
         {
             InitializeComponent();
             _auth = auth;
             _api = api;
             _hub = hub;
+            _push = push;
             ChatList.ItemsSource = _chats;
             SizeChanged += (_, _) => UpdateLayout();
             Current = this;
+            // The next person to sign in registers this device for their own notifications.
+            auth.SignedOut += () => _pushRegistered = false;
         }
 
         /// <summary>The chat list Shell created; pages that start a chat open it through here.</summary>
@@ -74,7 +79,15 @@ namespace Mi_nU
             _hub.Start();
             if (_twoPane && Detail.ChatId is not null)
                 Detail.Activate();
+            if (!_pushRegistered)
+            {
+                _pushRegistered = true;
+                _ = _push.RegisterAsync();
+            }
             await ReloadAsync();
+            // A notification tapped while the app was closed or signed out waited for this.
+            if (Shell.Current is AppShell shell)
+                await shell.ProcessPushAsync();
         }
 
         protected override void OnDisappearing()
@@ -222,9 +235,13 @@ namespace Mi_nU
         {
             const string logout = "Выйти";
             var name = _auth.Session?.User.DisplayName ?? "";
+            if (await DisplayActionSheetAsync(name, "Отмена", logout) != logout)
+                return;
+
+            // While still signed in: the server must know whose notifications to stop.
+            await _push.UnregisterAsync();
             // AppShell returns to the sign-in screen when the session ends.
-            if (await DisplayActionSheetAsync(name, "Отмена", logout) == logout)
-                _auth.Logout();
+            _auth.Logout();
         }
     }
 }

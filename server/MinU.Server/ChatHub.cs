@@ -7,7 +7,7 @@ using MinU.Contracts;
 namespace MinU.Server;
 
 [Authorize]
-public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db) : Hub<IChatClient>
+public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db, PushQueue push) : Hub<IChatClient>
 {
     Guid UserId => Guid.Parse(Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -20,7 +20,11 @@ public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db) : H
 
         var (message, created) = await chats.AddMessageAsync(chatId, UserId, text, clientMessageId);
         if (created)
-            await Clients.Users(await MemberKeysAsync(chatId)).MessageReceived(message);
+        {
+            var members = await chats.MemberIdsAsync(chatId);
+            await Clients.Users(members.Select(id => id.ToString())).MessageReceived(message);
+            push.Message(members.Where(id => id != UserId), message, await chats.GroupTitleAsync(chatId));
+        }
         return message;
     }
 
@@ -36,8 +40,11 @@ public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db) : H
 
         if (started)
         {
-            var others = (await chats.MemberIdsAsync(chatId)).Where(id => id != me.Id).Select(id => id.ToString());
-            await Clients.Users(others).CallInvited(new CallInvite(result.CallId, chatId, me, video));
+            var others = (await chats.MemberIdsAsync(chatId)).Where(id => id != me.Id).ToList();
+            var invite = new CallInvite(result.CallId, chatId, me, video);
+            await Clients.Users(others.Select(id => id.ToString())).CallInvited(invite);
+            // Rings phones whose app is closed; an open app answers through the event above instead.
+            push.Call(others, invite);
         }
         else
         {
@@ -90,8 +97,12 @@ public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db) : H
     async Task NotifyLeftAsync(CallRegistry.Departure departure)
     {
         if (departure.Ended)
-            // Sent to the whole chat, so that phones still ringing stop.
-            await Clients.Users(await MemberKeysAsync(departure.Call.ChatId)).CallEnded(departure.Call.Id);
+        {
+            // Sent to the whole chat, so that phones still ringing stop, closed apps included.
+            var members = await chats.MemberIdsAsync(departure.Call.ChatId);
+            await Clients.Users(members.Select(id => id.ToString())).CallEnded(departure.Call.Id);
+            push.CallEnded(members, departure.Call.Id);
+        }
         else
             await Clients.Clients(departure.Call.Participants.Keys.ToList()).CallParticipantLeft(departure.Participant);
     }

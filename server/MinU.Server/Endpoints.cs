@@ -71,6 +71,55 @@ public static partial class Endpoints
         api.MapGet("/ice-servers", (ClaimsPrincipal principal, IConfiguration config) =>
             Results.Ok(TurnCredentials.Issue(config, UserId(principal))));
 
+        api.MapPut("/devices", async (RegisterDeviceRequest request, AppDbContext db, ClaimsPrincipal principal) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token) || request.Token.Length > Limits.DeviceTokenMax || request.Platform != "android")
+                return Problem("Unknown device.");
+
+            var me = UserId(principal);
+            var device = await db.DeviceTokens.FirstOrDefaultAsync(x => x.Token == request.Token);
+            if (device is null)
+                db.DeviceTokens.Add(new DeviceToken { UserId = me, Token = request.Token, Platform = request.Platform });
+            else
+            {
+                // Someone else signed in on this phone: the notifications are theirs now.
+                device.UserId = me;
+                device.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException e) when (ChatService.IsUniqueViolation(e))
+            {
+                // The same phone registered twice at once; the other request already stored it.
+            }
+            return Results.NoContent();
+        });
+
+        // "Decline" on a ringing notification, which answers without opening the app or its SignalR connection.
+        api.MapPost("/calls/{callId:guid}/decline", async (Guid callId, CallRegistry calls, ChatService chats, AppDbContext db,
+            ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub) =>
+        {
+            var me = UserId(principal);
+            if (calls.ChatOf(callId) is not { } chatId)
+                return Results.NoContent();
+            if (!await chats.IsMemberAsync(chatId, me))
+                return Results.NotFound();
+
+            var user = ChatService.ToDto(await db.Users.AsNoTracking().FirstAsync(x => x.Id == me));
+            await hub.Clients.Clients(calls.ParticipantIds(callId)).CallDeclined(callId, user);
+            return Results.NoContent();
+        });
+
+        // Signing out stops the notifications on that phone.
+        api.MapDelete("/devices", async (string token, AppDbContext db, ClaimsPrincipal principal) =>
+        {
+            var me = UserId(principal);
+            await db.DeviceTokens.Where(x => x.Token == token && x.UserId == me).ExecuteDeleteAsync();
+            return Results.NoContent();
+        });
+
         api.MapGet("/users", async (string? query, AppDbContext db, ClaimsPrincipal principal) =>
         {
             var text = query?.Trim() ?? "";

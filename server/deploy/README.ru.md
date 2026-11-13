@@ -54,6 +54,24 @@ sudo chmod 600 .env
 
 `JWT_KEY` не меняйте без нужды: после смены всем придётся войти заново. `.env` в git не попадает.
 
+### Ключ Firebase для push-уведомлений
+
+В [консоли Firebase](https://console.firebase.google.com) откройте свой проект, затем **Project settings → Service
+accounts → Generate new private key**. Скопируйте скачанный файл на сервер под именем `firebase.json`:
+
+```bash
+# с вашего компьютера:
+scp путь/к/скачанному-ключу.json user@ваш-сервер:/tmp/firebase.json
+# на сервере:
+sudo mv /tmp/firebase.json /opt/minu/server/deploy/firebase.json
+sudo chown 1654:1654 /opt/minu/server/deploy/firebase.json
+sudo chmod 600 /opt/minu/server/deploy/firebase.json
+```
+
+Сервер в контейнере работает от пользователя с uid `1654`, поэтому файл должен принадлежать ему: иначе сервер не
+прочитает ключ и будет работать без уведомлений. Этот ключ даёт право рассылать уведомления от имени вашего
+приложения: не кладите его в репозиторий и не пересылайте. `firebase.json` в git не попадает.
+
 ## 4. Запуск
 
 ```bash
@@ -66,6 +84,9 @@ sudo docker compose logs -f server caddy
 Первая сборка образа занимает несколько минут. При первом запуске сервер сам создаст таблицы в базе. В журнале
 `server` будет одна строка `fail` про `__EFMigrationsHistory`: так EF проверяет, есть ли уже таблица миграций, это не
 ошибка. Caddy в журнале сообщит, что получил сертификат для `API_DOMAIN`.
+
+Строк `push notifications are off` в журнале `server` быть не должно. Если есть, сервер не нашёл или не смог прочитать
+`firebase.json`: проверьте владельца файла из шага 3.
 
 ## 5. Проверка
 
@@ -140,4 +161,4 @@ sudo docker compose exec postgres pg_dump -U minu minu | gzip > minu-$(date +%F)
 ## 10. Ограничения
 
 - Запускайте сервер в одном экземпляре: текущие звонки хранятся в его памяти.
-- Push-уведомлений нет: входящий звонок приходит, только пока приложение открыто.
+- Push-уведомления есть только на Android; на Windows входящий звонок приходит, пока приложение запущено.

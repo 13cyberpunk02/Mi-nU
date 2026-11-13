@@ -19,6 +19,7 @@ namespace Mi_nU.Services
     [JsonSerializable(typeof(List<UserDto>))]
     [JsonSerializable(typeof(List<MessageDto>))]
     [JsonSerializable(typeof(IceServersDto))]
+    [JsonSerializable(typeof(RegisterDeviceRequest))]
     internal partial class ChatJsonContext : JsonSerializerContext;
 
     public class ChatApi(AuthService auth)
@@ -48,7 +49,23 @@ namespace Mi_nU.Services
         public Task<List<MessageDto>> GetMessagesAsync(Guid chatId, long? before = null) =>
             SendAsync(HttpMethod.Get, $"/api/chats/{chatId}/messages{(before is null ? "" : $"?before={before}")}", null, ChatJsonContext.Default.ListMessageDto);
 
-        async Task<T> SendAsync<T>(HttpMethod method, string path, HttpContent? content, JsonTypeInfo<T> type, CancellationToken cancel = default)
+        /// <summary>Tells the server where to send this user's push notifications.</summary>
+        public Task RegisterDeviceAsync(string token, string platform) =>
+            SendAsync(HttpMethod.Put, "/api/devices",
+                JsonContent.Create(new RegisterDeviceRequest(token, platform), ChatJsonContext.Default.RegisterDeviceRequest));
+
+        public Task UnregisterDeviceAsync(string token) =>
+            SendAsync(HttpMethod.Delete, $"/api/devices?token={Uri.EscapeDataString(token)}");
+
+        /// <summary>Declines a ringing call without the SignalR connection, for the button on its notification.</summary>
+        public Task DeclineCallAsync(Guid callId) =>
+            SendAsync(HttpMethod.Post, $"/api/calls/{callId}/decline");
+
+        Task SendAsync(HttpMethod method, string path, HttpContent? content = null) =>
+            SendAsync<object>(method, path, content, null);
+
+        /// <summary>A null <paramref name="type"/> is for requests the server answers with no body.</summary>
+        async Task<T> SendAsync<T>(HttpMethod method, string path, HttpContent? content, JsonTypeInfo<T>? type, CancellationToken cancel = default)
         {
             using var request = new HttpRequestMessage(method, auth.ServerUrl + path) { Content = content };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.Session?.Token);
@@ -63,6 +80,8 @@ namespace Mi_nU.Services
                 }
                 if (!response.IsSuccessStatusCode)
                     throw new ApiException("На сервере произошла ошибка. Повторите попытку позже.");
+                if (type is null)
+                    return default!;
 
                 return await response.Content.ReadFromJsonAsync(type, cancel)
                     ?? throw new ApiException("На сервере произошла ошибка. Повторите попытку позже.");

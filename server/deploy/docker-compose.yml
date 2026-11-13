@@ -35,6 +35,10 @@ services:
       Turn__Urls__1: turn:${TURN_HOST}:3478?transport=udp
       Turn__Urls__2: turn:${TURN_HOST}:3478?transport=tcp
       Turn__Urls__3: turns:${TURN_HOST}:5349?transport=tcp
+      # Push notifications: the Firebase service account key, see README step 3.
+      Firebase__CredentialsFile: /run/secrets/firebase.json
+    volumes:
+      - ./firebase.json:/run/secrets/firebase.json:ro
 
   caddy:
     image: caddy:2.8.4

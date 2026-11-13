@@ -83,7 +83,24 @@ namespace Mi_nU.Services
             var invite = Invite ?? throw new CallException("Звонок уже завершён.");
             Invite = null;
             Title = invite.Caller.DisplayName;
+            await _hub.WaitConnectedAsync(TimeSpan.FromSeconds(15));
             await JoinAsync(invite.Video && video, () => _hub.JoinCallAsync(invite.CallId));
+        }
+
+        /// <summary>
+        /// A call the user tapped on a notification while the app was closed: SignalR's invite went nowhere then.
+        /// <paramref name="ring"/> false skips the incoming call screen, for "Answer" on the notification.
+        /// </summary>
+        public void ShowIncomingFromPush(CallInvite invite, bool ring)
+        {
+            // The open app already got the same invite through SignalR, or the user is in another call.
+            if (Phase != CallPhase.Idle)
+                return;
+
+            Invite = invite;
+            Phase = CallPhase.Incoming;
+            if (ring)
+                IncomingCall?.Invoke();
         }
 
         public async Task DeclineAsync()
@@ -150,7 +167,13 @@ namespace Mi_nU.Services
             catch (Exception e)
             {
                 Finish(null);
-                throw e as CallException ?? new CallException("Не удалось начать звонок. Проверьте подключение к сети.");
+                throw e switch
+                {
+                    CallException known => known,
+                    // A call answered from a notification may have ended while the app was starting.
+                    Microsoft.AspNetCore.SignalR.HubException hub when hub.Message.Contains("has ended") => new CallException("Звонок уже завершён."),
+                    _ => new CallException("Не удалось начать звонок. Проверьте подключение к сети."),
+                };
             }
         }
 
