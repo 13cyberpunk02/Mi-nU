@@ -42,16 +42,18 @@ namespace Mi_nU
         readonly ChatApi _api;
         readonly ChatHubClient _hub;
         readonly PushNotifications _push;
+        readonly DesktopNotifications _desktop;
         readonly ObservableCollection<ChatRow> _chats = [];
         bool _pushRegistered;
 
-        public MainPage(AuthService auth, ChatApi api, ChatHubClient hub, PushNotifications push)
+        public MainPage(AuthService auth, ChatApi api, ChatHubClient hub, PushNotifications push, DesktopNotifications desktop)
         {
             InitializeComponent();
             _auth = auth;
             _api = api;
             _hub = hub;
             _push = push;
+            _desktop = desktop;
             ChatList.ItemsSource = _chats;
             SizeChanged += (_, _) => UpdateLayout();
             Current = this;
@@ -140,6 +142,7 @@ namespace Mi_nU
             try
             {
                 var chats = await _api.GetChatsAsync();
+                _desktop.Remember(chats);
                 ErrorLabel.IsVisible = false;
 
                 // Rebuilding an unchanged list would swallow a tap that lands in the middle of it.

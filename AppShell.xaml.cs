@@ -51,7 +51,8 @@ namespace Mi_nU
                     try
                     {
                         await _calls.AcceptAsync();
-                        await GoToAsync("call");
+                        // On Windows the incoming call screen is already open: the call replaces it.
+                        await GoToAsync(CurrentPage is Pages.IncomingCallPage ? "../call" : "call");
                     }
                     catch (CallException error)
                     {
