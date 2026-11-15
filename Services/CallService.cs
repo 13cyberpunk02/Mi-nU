@@ -37,6 +37,16 @@ namespace Mi_nU.Services
         VideoSource? _source;
         CameraCapturer? _camera;
         IDisposable? _testPattern;
+        CancellationTokenSource? _listening;
+        /// <summary>When each participant (or <see cref="SelfKey"/>) was last heard above <see cref="SpeakingLevel"/>.</summary>
+        readonly Dictionary<string, DateTime> _heardAt = [];
+        HashSet<string> _speaking = [];
+
+        const string SelfKey = "";
+        /// <summary>WebRTC's audio level, 0 to 1; above this counts as talking rather than room noise.</summary>
+        const double SpeakingLevel = 0.05;
+        /// <summary>How long someone stays marked after they go quiet, so the mark doesn't flicker between words.</summary>
+        static readonly TimeSpan SpeakingHold = TimeSpan.FromMilliseconds(800);
 
         public CallService(AuthService auth, ChatHubClient hub, ChatApi api)
         {
@@ -65,7 +75,14 @@ namespace Mi_nU.Services
         public bool HasRelay => _iceServers.Any(server => server.Url.StartsWith("turn", StringComparison.OrdinalIgnoreCase));
 
         public event Action? Changed;
+        /// <summary>Someone started or stopped talking; see <see cref="IsSpeaking"/>. Raised on the main thread.</summary>
+        public event Action? SpeakingChanged;
         public event Action? IncomingCall;
+
+        public bool IsSpeaking(CallPeer peer) => _speaking.Contains(peer.Id);
+
+        /// <summary>The user is talking, and not muted.</summary>
+        public bool IsSelfSpeaking => _speaking.Contains(SelfKey);
         /// <summary>The call is over or the incoming call is gone. The argument explains why, if the user should know.</summary>
         public event Action<string?>? Finished;
 
@@ -245,6 +262,75 @@ namespace Mi_nU.Services
 
             UseCallAudio(true, speaker: video);
             DeviceDisplay.Current.KeepScreenOn = true;
+            StartListening();
+        }
+
+        // Every connection reports how loud the other side is right now, and how loud our own microphone is.
+        void StartListening()
+        {
+            _listening?.Cancel();
+            var stop = _listening = new CancellationTokenSource();
+            _ = Task.Run(async () =>
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+                try
+                {
+                    while (await timer.WaitForNextTickAsync(stop.Token))
+                        await ListenOnceAsync(stop.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            });
+        }
+
+        async Task ListenOnceAsync(CancellationToken stop)
+        {
+            // The peers belong to the main thread; the stats are read off it.
+            var peers = await MainThread.InvokeOnMainThreadAsync(() => _peers.Values.ToList());
+            var levels = new Dictionary<string, double>();
+            var self = 0.0;
+            foreach (var peer in peers)
+            {
+                try
+                {
+                    var (remote, local) = await peer.AudioLevelsAsync();
+                    levels[peer.Id] = remote;
+                    self = Math.Max(self, local);
+                }
+                catch (Exception e) when (e is ObjectDisposedException or WebRtcException or System.Text.Json.JsonException)
+                {
+                    // The peer left meanwhile.
+                }
+            }
+            if (!stop.IsCancellationRequested)
+                OnMainThread(() => UpdateSpeaking(levels, self));
+        }
+
+        void UpdateSpeaking(Dictionary<string, double> levels, double self)
+        {
+            if (Phase == CallPhase.Idle)
+                return;
+
+            var now = DateTime.UtcNow;
+            foreach (var (id, level) in levels)
+            {
+                if (level >= SpeakingLevel)
+                    _heardAt[id] = now;
+            }
+            if (IsMuted)
+                _heardAt.Remove(SelfKey);
+            else if (self >= SpeakingLevel)
+                _heardAt[SelfKey] = now;
+
+            var speaking = _heardAt
+                .Where(heard => now - heard.Value < SpeakingHold && (heard.Key == SelfKey || _peers.ContainsKey(heard.Key)))
+                .Select(heard => heard.Key)
+                .ToHashSet();
+            if (speaking.SetEquals(_speaking))
+                return;
+            _speaking = speaking;
+            SpeakingChanged?.Invoke();
         }
 
         CallPeer AddPeer(CallParticipant participant)
@@ -387,6 +473,10 @@ namespace Mi_nU.Services
 
             _ringing?.Cancel();
             _ringing = null;
+            _listening?.Cancel();
+            _listening = null;
+            _heardAt.Clear();
+            _speaking = [];
             _callId = null;
             _chat = null;
             _hadOthers = false;
@@ -546,6 +636,32 @@ namespace Mi_nU.Services
             return $"{State} audio={audioReceived} video={framesDecoded}";
         }
 #endif
+
+        /// <summary>
+        /// How loud the other side is right now, and how loud our own microphone is, both 0 to 1 as WebRTC measures them.
+        /// Zero for whatever the report doesn't have yet.
+        /// </summary>
+        internal async Task<(double Remote, double Local)> AudioLevelsAsync()
+        {
+            double remote = 0, local = 0;
+            using var report = JsonDocument.Parse(await _connection.GetStatsJsonAsync());
+            foreach (var stat in report.RootElement.EnumerateArray())
+            {
+                if (!stat.TryGetProperty("type", out var type) || !stat.TryGetProperty("kind", out var kind) || kind.GetString() != "audio"
+                    || !stat.TryGetProperty("audioLevel", out var level))
+                    continue;
+                switch (type.GetString())
+                {
+                    case "inbound-rtp":
+                        remote = Math.Max(remote, level.GetDouble());
+                        break;
+                    case "media-source":
+                        local = Math.Max(local, level.GetDouble());
+                        break;
+                }
+            }
+            return (remote, local);
+        }
 
         void Enqueue(Func<Task> step) => _work.Writer.TryWrite(step);
 

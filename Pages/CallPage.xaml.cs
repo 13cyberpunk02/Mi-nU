@@ -37,6 +37,7 @@ namespace Mi_nU.Pages
             }
 
             _calls.Changed += Refresh;
+            _calls.SpeakingChanged += Refresh;
             _timer.Start();
             Refresh();
         }
@@ -46,6 +47,7 @@ namespace Mi_nU.Pages
             base.OnDisappearing();
             _timer.Stop();
             _calls.Changed -= Refresh;
+            _calls.SpeakingChanged -= Refresh;
             foreach (var tile in _tiles)
                 tile.Video.Track = null;
             LocalVideo.Track = null;
@@ -70,11 +72,13 @@ namespace Mi_nU.Pages
             var peers = _calls.Peers.ToList();
             // One other person fills the screen with you in the corner; with more, everyone gets a tile.
             var preview = peers.Count <= 1 && _calls.LocalVideo is not null;
-            var shown = peers.Select(peer => (peer.Name, peer.Video)).ToList();
+            var shown = peers.Select(peer => (Name: peer.Name, Video: peer.Video, Speaking: _calls.IsSpeaking(peer))).ToList();
             if (!preview)
-                shown.Add(("Вы", _calls.LocalVideo));
+                shown.Add(("Вы", _calls.LocalVideo, _calls.IsSelfSpeaking));
             if (shown.Count == 0)
-                shown.Add((_calls.Title, null));
+                shown.Add((_calls.Title, null, false));
+            // Only worth marking among several tiles: one person filling the screen is obviously the one talking.
+            var markSpeaker = shown.Count > 1;
 
             for (var i = 0; i < _tiles.Length; i++)
             {
@@ -87,11 +91,17 @@ namespace Mi_nU.Pages
                     continue;
                 }
 
-                var (who, track) = shown[i];
+                var (who, track, speaking) = shown[i];
                 name.Text = who;
                 avatar.Name = avatar.Seed = who;
                 video.Track = track;
                 video.IsVisible = track is not null;
+                var marked = markSpeaker && speaking;
+                var style = StyleNamed(marked ? "CallTileSpeaking" : "CallTile");
+                if (tile.Style != style)
+                    tile.Style = style;
+                // The frame can't be seen by a screen reader, so the name says it too.
+                SemanticProperties.SetDescription(name, marked ? $"{who}, говорит" : who);
             }
             Arrange(Math.Min(shown.Count, _tiles.Length));
 
