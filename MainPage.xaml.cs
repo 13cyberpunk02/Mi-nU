@@ -16,6 +16,7 @@ namespace Mi_nU
         {
             null => Chat.Kind == ChatKind.Group ? $"Участников: {Chat.Members.Count}" : "Сообщений пока нет",
             { Call: { } call } => Formatting.CallLine(call, LastIsMine),
+            { Kind: MessageKind.System } last => last.Text,
             var last when LastIsMine && Chat.Kind == ChatKind.Group => $"Вы: {last.Text}",
             var last when Chat.Kind == ChatKind.Group => $"{last.Sender.DisplayName}: {last.Text}",
             var last => last.Text,
@@ -99,6 +100,8 @@ namespace Mi_nU
             _presence = presence;
             // Kept up to date also while a chat page covers the list, so going back shows it right away.
             presence.Changed += OnPresenceChanged;
+            hub.ChatUpdated += chat => MainThread.BeginInvokeOnMainThread(() => OnChatUpdated(chat));
+            hub.ChatRemoved += chatId => MainThread.BeginInvokeOnMainThread(() => OnChatRemoved(chatId));
             ChatList.ItemsSource = _chats;
             SizeChanged += (_, _) => UpdateLayout();
             Current = this;
@@ -108,6 +111,40 @@ namespace Mi_nU
 
         /// <summary>The chat list Shell created; pages that start a chat open it through here.</summary>
         public static MainPage? Current { get; private set; }
+
+        /// <summary>The list's copy of the chat, kept current while other pages cover it.</summary>
+        public ChatDto? Latest(Guid chatId) => _chats.FirstOrDefault(row => row.Chat.Id == chatId)?.Chat;
+
+        /// <summary>Takes a group's new title, members and owner, from the server's event or a request's answer.</summary>
+        public void ApplyUpdate(ChatDto update) => OnChatUpdated(update);
+
+        void OnChatUpdated(ChatDto update)
+        {
+            var index = _chats.ToList().FindIndex(row => row.Chat.Id == update.Id);
+            if (index < 0)
+                return;
+
+            // The unread count and last message stay this user's own.
+            var chat = _chats[index].Chat with { Title = update.Title, Members = update.Members, OwnerId = update.OwnerId };
+            _chats[index] = Row(chat);
+            _desktop.Remember([chat]);
+            if (Detail.ChatId == chat.Id)
+                Detail.Update(chat);
+            ApplySearch();
+        }
+
+        void OnChatRemoved(Guid chatId)
+        {
+            if (_chats.FirstOrDefault(row => row.Chat.Id == chatId) is { } row)
+                _chats.Remove(row);
+            if (Detail.ChatId == chatId)
+            {
+                Detail.Close();
+                Detail.IsVisible = false;
+                NoChatHint.IsVisible = true;
+            }
+            ApplySearch();
+        }
 
         /// <summary>Wide enough to show the open chat beside the list.</summary>
         const double TwoPaneWidth = 900;

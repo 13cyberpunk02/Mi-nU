@@ -118,7 +118,20 @@
                 </Border>
             </VerticalStackLayout>
         </DataTemplate>
+        <!-- A change to the group: a quiet line in the middle, like the day above messages. -->
+        <DataTemplate x:Key="SystemTemplate" x:DataType="controls:MessageRow">
+            <VerticalStackLayout Padding="24,0" Margin="{Binding Spacing}" Spacing="8">
+                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
+                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
+                </Border>
+                <!-- A long line wraps, so a softer corner than the day's pill. -->
+                <Border Style="{StaticResource DayPill}" Margin="0" StrokeShape="RoundRectangle 12" MaximumWidthRequest="420">
+                    <Label Text="{Binding Text}" Style="{StaticResource Small}" HorizontalTextAlignment="Center" />
+                </Border>
+            </VerticalStackLayout>
+        </DataTemplate>
         <controls:MessageTemplateSelector x:Key="MessageSelector"
+                                          System="{StaticResource SystemTemplate}"
                                           Mine="{StaticResource MineTemplate}"
                                           MineFailed="{StaticResource MineFailedTemplate}"
                                           Other="{StaticResource OtherTemplate}"
@@ -127,11 +140,19 @@
     </ContentView.Resources>
 
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
-        <Grid BackgroundColor="{DynamicResource Surface}" Padding="8,8,12,8" ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
+        <Grid BackgroundColor="{DynamicResource Surface}" Padding="8,8,12,8" ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
             <Button x:Name="BackButton" AutomationId="ChatBack" Text="{x:Static themes:Icons.Back}" Style="{StaticResource IconButton}"
                     FontSize="26" SemanticProperties.Description="Назад к чатам" Clicked="OnBackClicked" />
-            <controls:Avatar Grid.Column="1" x:Name="HeaderAvatar" Size="40" VerticalOptions="Center" Margin="4,0,0,0" />
+            <!-- For a group, the avatar and name open the group's page, as the members button does. -->
+            <controls:Avatar Grid.Column="1" x:Name="HeaderAvatar" Size="40" VerticalOptions="Center" Margin="4,0,0,0">
+                <controls:Avatar.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnHeaderTapped" />
+                </controls:Avatar.GestureRecognizers>
+            </controls:Avatar>
             <VerticalStackLayout Grid.Column="2" VerticalOptions="Center">
+                <VerticalStackLayout.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnHeaderTapped" />
+                </VerticalStackLayout.GestureRecognizers>
                 <Label x:Name="HeaderName" AutomationId="ChatTitle" Style="{StaticResource Name}" />
                 <Label x:Name="HeaderSubtitle" Style="{StaticResource Small}" IsVisible="False" />
             </VerticalStackLayout>
@@ -139,6 +160,8 @@
                     SemanticProperties.Description="Позвонить" Clicked="OnAudioCallClicked" />
             <Button Grid.Column="4" AutomationId="ChatCallVideo" Text="{x:Static themes:Icons.Video}" Style="{StaticResource IconButton}"
                     SemanticProperties.Description="Видеозвонок" Clicked="OnVideoCallClicked" />
+            <Button Grid.Column="5" x:Name="GroupInfoButton" AutomationId="ChatGroupInfo" Text="{x:Static themes:Icons.Users}" Style="{StaticResource IconButton}"
+                    SemanticProperties.Description="Участники и настройки группы" Clicked="OnHeaderTapped" IsVisible="False" />
         </Grid>
         <BoxView Grid.Row="1" Style="{StaticResource Divider}" />
 

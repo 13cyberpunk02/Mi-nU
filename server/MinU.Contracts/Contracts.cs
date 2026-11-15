@@ -14,14 +14,17 @@ public record UserDto(Guid Id, string UserName, string DisplayName);
 
 public record CreateDirectChatRequest(Guid UserId);
 public record CreateGroupChatRequest(string Title, IReadOnlyList<Guid> MemberIds);
+public record RenameGroupRequest(string Title);
+public record AddMembersRequest(IReadOnlyList<Guid> UserIds);
 
 /// <summary>
 /// For a direct chat, <see cref="Title"/> is the other person's name.
 /// <see cref="UnreadCount"/> counts the others' messages the viewer hasn't read yet;
 /// <see cref="ReadUpTo"/> is the newest message someone else has read, so the viewer's own messages up to it show as read.
+/// <see cref="OwnerId"/> is the group's owner, the only one who may remove others; null for a direct chat.
 /// </summary>
 public record ChatDto(Guid Id, ChatKind Kind, string Title, IReadOnlyList<UserDto> Members, MessageDto? LastMessage,
-    int UnreadCount = 0, long ReadUpTo = 0);
+    int UnreadCount = 0, long ReadUpTo = 0, Guid? OwnerId = null);
 
 /// <summary>
 /// Whether someone is in the app right now. <see cref="LastSeenAt"/> is when they last left it, null if unknown.
@@ -32,7 +35,8 @@ public record Presence(Guid UserId, bool Online, DateTimeOffset? LastSeenAt);
 /// <summary><see cref="UserId"/> has read <see cref="ChatId"/> up to and including message <see cref="MessageId"/>.</summary>
 public record ReadReceipt(Guid ChatId, Guid UserId, long MessageId);
 
-public enum MessageKind { Text, Call }
+/// <summary><see cref="System"/>: a change to a group, such as someone added, written by the server.</summary>
+public enum MessageKind { Text, Call, System }
 
 /// <summary>A call that has ended. <see cref="DurationSeconds"/> is null when nobody answered.</summary>
 public record CallSummary(bool Video, int? DurationSeconds);
@@ -111,6 +115,13 @@ public interface IChatClient
     /// <summary>Someone who shares a chat with this user came online or left.</summary>
     Task PresenceChanged(Presence presence);
     Task ChatCreated(ChatDto chat);
+    /// <summary>
+    /// A group's title, members or owner changed. Its unread count and last message aren't the viewer's own,
+    /// so only those parts should be taken.
+    /// </summary>
+    Task ChatUpdated(ChatDto chat);
+    /// <summary>The user left the group or was removed from it, on this device or another.</summary>
+    Task ChatRemoved(Guid chatId);
     Task CallInvited(CallInvite invite);
     Task CallParticipantJoined(CallParticipant participant);
     Task CallParticipantLeft(CallParticipant participant);

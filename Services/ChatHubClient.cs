@@ -20,6 +20,9 @@ namespace Mi_nU.Services
 
         public event Action<MessageDto>? MessageReceived;
         public event Action<ChatDto>? ChatCreated;
+        /// <summary>A group's title, members or owner; take only those from it, see <see cref="IChatClient.ChatUpdated"/>.</summary>
+        public event Action<ChatDto>? ChatUpdated;
+        public event Action<Guid>? ChatRemoved;
         public event Action<ReadReceipt>? ChatRead;
         public event Action<Presence>? PresenceChanged;
         /// <summary>Connected or reconnected: anything sent while offline has to be fetched again.</summary>
@@ -46,6 +49,8 @@ namespace Mi_nU.Services
 
             hub.On<MessageDto>(nameof(IChatClient.MessageReceived), message => MessageReceived?.Invoke(message));
             hub.On<ChatDto>(nameof(IChatClient.ChatCreated), chat => ChatCreated?.Invoke(chat));
+            hub.On<ChatDto>(nameof(IChatClient.ChatUpdated), chat => ChatUpdated?.Invoke(chat));
+            hub.On<Guid>(nameof(IChatClient.ChatRemoved), chatId => ChatRemoved?.Invoke(chatId));
             hub.On<ReadReceipt>(nameof(IChatClient.ChatRead), receipt => ChatRead?.Invoke(receipt));
             hub.On<Presence>(nameof(IChatClient.PresenceChanged), presence => PresenceChanged?.Invoke(presence));
             hub.On<CallInvite>(nameof(IChatClient.CallInvited), invite => CallInvited?.Invoke(invite));

@@ -16,6 +16,8 @@ namespace Mi_nU.Controls
         /// <summary>Someone else in the chat has seen this message; only kept for one's own messages.</summary>
         public bool Read { get; init; }
 
+        /// <summary>A line about a change to the group, from the server.</summary>
+        public bool IsSystem { get; init; }
         /// <summary>Set for a call record, which shows as a call instead of text.</summary>
         public CallSummary? Call { get; init; }
         public string CallTitle => Call is null ? "" : Formatting.CallTitle(Call, IsMine);
@@ -53,9 +55,11 @@ namespace Mi_nU.Controls
         public DataTemplate? Other { get; set; }
         public DataTemplate? MineCall { get; set; }
         public DataTemplate? OtherCall { get; set; }
+        public DataTemplate? System { get; set; }
 
         protected override DataTemplate? OnSelectTemplate(object item, BindableObject container) => item switch
         {
+            MessageRow { IsSystem: true } => System,
             MessageRow { Call: not null, IsMine: true } => MineCall,
             MessageRow { Call: not null } => OtherCall,
             MessageRow { IsMine: false } => Other,
@@ -133,13 +137,48 @@ namespace Mi_nU.Controls
             _rows.Clear();
             MessageEntry.Text = "";
             OlderButton.IsVisible = ErrorLabel.IsVisible = false;
-            HeaderName.Text = chat.Title;
-            HeaderAvatar.Name = chat.Title;
-            HeaderAvatar.Seed = new ChatRow(chat).Seed;
-            ShowPresence();
+            ShowHeader();
             if (_active)
                 _ = LoadLatestAsync();
         }
+
+        /// <summary>The open chat's title, members or owner changed; its messages stay as they are.</summary>
+        public void Update(ChatDto chat)
+        {
+            if (_chat?.Id != chat.Id)
+                return;
+
+            _chat = _chat with { Title = chat.Title, Members = chat.Members, OwnerId = chat.OwnerId };
+            ShowHeader();
+        }
+
+        /// <summary>Empties the view, for a chat the user is no longer in.</summary>
+        public void Close()
+        {
+            _chat = null;
+            _rows.Clear();
+            MessageEntry.Text = "";
+        }
+
+        void ShowHeader()
+        {
+            if (_chat is not { } chat)
+                return;
+
+            HeaderName.Text = chat.Title;
+            HeaderAvatar.Name = chat.Title;
+            HeaderAvatar.Seed = new ChatRow(chat).Seed;
+            GroupInfoButton.IsVisible = chat.Kind == ChatKind.Group;
+            ShowPresence();
+        }
+
+        async void OnHeaderTapped(object? sender, EventArgs e)
+        {
+            if (_chat is { Kind: ChatKind.Group } chat)
+                await Shell.Current.GoToAsync("groupinfo", new ShellNavigationQueryParameters { ["chat"] = chat });
+        }
+
+        void OnChatUpdated(ChatDto chat) => MainThread.BeginInvokeOnMainThread(() => Update(chat));
 
         /// <summary>Under the name: the other person's presence, or for a group its size and how many are online.</summary>
         void ShowPresence()
@@ -185,7 +224,11 @@ namespace Mi_nU.Controls
             _hub.Connected += OnConnected;
             _activity.Changed += MarkSeen;
             _presence.Changed += OnPresenceChanged;
+            _hub.ChatUpdated += OnChatUpdated;
             _clock.Start();
+            // The group may have changed while another page covered this one.
+            if (_chat is { } chat && MainPage.Current?.Latest(chat.Id) is { } latest)
+                Update(latest);
             ShowPresence();
             _ = LoadLatestAsync();
         }
@@ -201,6 +244,7 @@ namespace Mi_nU.Controls
             _hub.Connected -= OnConnected;
             _activity.Changed -= MarkSeen;
             _presence.Changed -= OnPresenceChanged;
+            _hub.ChatUpdated -= OnChatUpdated;
             _clock.Stop();
         }
 
@@ -419,7 +463,8 @@ namespace Mi_nU.Controls
                 var linked = row with
                 {
                     ShowDay = !sameDay,
-                    Continues = sameDay && previous!.IsMine == row.IsMine && previous.Sender == row.Sender,
+                    Continues = sameDay && !previous!.IsSystem && !row.IsSystem
+                        && previous.IsMine == row.IsMine && previous.Sender == row.Sender,
                 };
                 if (linked != row)
                     _rows[i] = linked;
@@ -434,6 +479,7 @@ namespace Mi_nU.Controls
             {
                 Read = mine && message.Id <= _readUpTo,
                 Call = message.Kind == MessageKind.Call ? message.Call : null,
+                IsSystem = message.Kind == MessageKind.System,
             };
         }
 

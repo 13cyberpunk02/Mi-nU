@@ -194,6 +194,89 @@ public static partial class Endpoints
                 return Results.NotFound();
             return Results.Ok(await chats.HistoryAsync(chatId, before, Math.Clamp(limit ?? 50, 1, Limits.HistoryPageMax)));
         });
+
+        // Any member may rename the group or add people; only the owner removes others, and anyone may leave.
+        api.MapPut("/chats/{chatId:guid}/title", async (Guid chatId, RenameGroupRequest request, ChatService chats,
+            ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub) =>
+        {
+            var title = request.Title?.Trim() ?? "";
+            if (title.Length is 0 or > Limits.ChatTitleMax)
+                return Problem($"A group title must be 1 to {Limits.ChatTitleMax} characters long.");
+            var me = UserId(principal);
+            if (await chats.FindGroupAsync(chatId, me) is not { } chat)
+                return Results.NotFound();
+            if (chat.Title == title)
+                return Results.Ok(ChatService.ToDto(chat, me, null));
+
+            await chats.RenameAsync(chatId, title);
+            return Results.Ok(await GroupChangedAsync(chatId, me, $"{NameIn(chat, me)} переименовал(а) группу в «{title}»", chats, hub));
+        });
+
+        api.MapPost("/chats/{chatId:guid}/members", async (Guid chatId, AddMembersRequest request, ChatService chats,
+            ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub) =>
+        {
+            var me = UserId(principal);
+            if (await chats.FindGroupAsync(chatId, me) is not { } chat)
+                return Results.NotFound();
+            if (request.UserIds is null || request.UserIds.Count == 0)
+                return Problem("Choose someone to add.");
+            if (chat.Members.Count + request.UserIds.Distinct().Count() > Limits.GroupMembersMax)
+                return Problem($"A group can have at most {Limits.GroupMembersMax} members.");
+
+            var added = await chats.AddMembersAsync(chatId, request.UserIds);
+            if (added.Count == 0)
+                return Results.Ok(ChatService.ToDto(chat, me, null));
+            var names = string.Join(", ", added.Select(user => user.DisplayName));
+            return Results.Ok(await GroupChangedAsync(chatId, me, $"{NameIn(chat, me)} добавил(а) {names}", chats, hub,
+                added: [.. added.Select(user => user.Id)]));
+        });
+
+        // Removing oneself is leaving.
+        api.MapDelete("/chats/{chatId:guid}/members/{userId:guid}", async (Guid chatId, Guid userId, ChatService chats,
+            ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub) =>
+        {
+            var me = UserId(principal);
+            if (await chats.FindGroupAsync(chatId, me) is not { } chat || chat.Members.All(member => member.UserId != userId))
+                return Results.NotFound();
+            if (userId != me && chat.OwnerId != me)
+                return Results.Json(new { error = "Only the group's owner can remove members." }, statusCode: StatusCodes.Status403Forbidden);
+
+            var text = userId == me
+                ? $"{NameIn(chat, me)} вышел(а) из группы"
+                : $"{NameIn(chat, me)} удалил(а) {NameIn(chat, userId)}";
+            if (!await chats.RemoveMemberAsync(chatId, userId))
+            {
+                await hub.Clients.User(userId.ToString()).ChatRemoved(chatId);
+                return Results.NoContent();
+            }
+            await GroupChangedAsync(chatId, me, text, chats, hub, removed: userId);
+            return Results.NoContent();
+        });
+    }
+
+    static string NameIn(Chat chat, Guid userId) =>
+        chat.Members.FirstOrDefault(member => member.UserId == userId)?.User.DisplayName ?? "";
+
+    /// <summary>
+    /// Writes the change into the group and tells everyone: the new chat to whoever was added, the update to the rest,
+    /// the line about it to all of them, and to whoever was removed that the chat is gone for them.
+    /// </summary>
+    static async Task<ChatDto> GroupChangedAsync(Guid chatId, Guid actorId, string text, ChatService chats,
+        IHubContext<ChatHub, IChatClient> hub, IReadOnlyCollection<Guid>? added = null, Guid? removed = null)
+    {
+        var line = await chats.AddSystemMessageAsync(chatId, actorId, text);
+        var chat = (await chats.FindAsync(chatId))!;
+        var dto = ChatService.ToDto(chat, actorId, null) with { LastMessage = line };
+        var members = chat.Members.Select(member => member.UserId).ToList();
+        added ??= [];
+
+        if (added.Count > 0)
+            await hub.Clients.Users(added.Select(id => id.ToString())).ChatCreated(dto);
+        await hub.Clients.Users(members.Where(id => !added.Contains(id)).Select(id => id.ToString())).ChatUpdated(dto);
+        await hub.Clients.Users(members.Select(id => id.ToString())).MessageReceived(line);
+        if (removed is { } gone)
+            await hub.Clients.User(gone.ToString()).ChatRemoved(chatId);
+        return dto;
     }
 
     /// <summary>A new token pair; the refresh token's hash is stored for the next <see cref="RefreshAsync"/>.</summary>

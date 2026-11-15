@@ -45,6 +45,7 @@ namespace Mi_nU
             builder.Services.AddTransient<Pages.ChatPage>();
             builder.Services.AddTransient<Pages.NewChatPage>();
             builder.Services.AddTransient<Pages.NewGroupPage>();
+            builder.Services.AddTransient<Pages.GroupInfoPage>();
             builder.Services.AddTransient<Pages.StartupPage>();
             builder.Services.AddTransient<Pages.LoginPage>();
             builder.Services.AddTransient<Pages.RegisterPage>();

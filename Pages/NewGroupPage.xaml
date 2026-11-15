@@ -8,7 +8,7 @@
              Title="Новая группа">
 
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Padding="16,8,16,16" RowSpacing="12" MaximumWidthRequest="{StaticResource ReadableWidth}">
-        <VerticalStackLayout Spacing="6">
+        <VerticalStackLayout x:Name="TitleSection" Spacing="6">
             <Label Text="Название" Style="{StaticResource FieldLabel}" />
             <Border Style="{StaticResource Field}">
                 <Entry x:Name="TitleEntry" AutomationId="NewGroupTitle" Placeholder="Например, Команда" />

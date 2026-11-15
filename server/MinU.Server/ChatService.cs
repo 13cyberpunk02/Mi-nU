@@ -108,11 +108,79 @@ public class ChatService(AppDbContext db)
         {
             Kind = ChatKind.Group,
             Title = title,
+            OwnerId = userId,
             Members = ids.Select(id => new ChatMember { UserId = id }).ToList(),
         };
         db.Chats.Add(chat);
         await db.SaveChangesAsync();
         return await LoadAsync(chat.Id);
+    }
+
+    /// <summary>The group with its members, or null when it isn't a group or the user isn't in it.</summary>
+    public Task<Chat?> FindGroupAsync(Guid chatId, Guid memberId) =>
+        Chats().FirstOrDefaultAsync(chat => chat.Id == chatId && chat.Kind == ChatKind.Group
+            && chat.Members.Any(member => member.UserId == memberId));
+
+    public Task<Chat?> FindAsync(Guid chatId) => LoadAsync(chatId);
+
+    public Task RenameAsync(Guid chatId, string title) =>
+        db.Chats.Where(chat => chat.Id == chatId).ExecuteUpdateAsync(set => set.SetProperty(chat => chat.Title, title));
+
+    /// <summary>Adds those of the users who exist and aren't members yet, and returns them.</summary>
+    public async Task<List<User>> AddMembersAsync(Guid chatId, IEnumerable<Guid> userIds)
+    {
+        var ids = userIds.Distinct().ToList();
+        var users = await db.Users
+            .Where(user => ids.Contains(user.Id) && !db.ChatMembers.Any(member => member.ChatId == chatId && member.UserId == user.Id))
+            .AsNoTracking()
+            .ToListAsync();
+        // They start with the history so far counted as read: it was written before they came.
+        var newest = await db.Messages.Where(message => message.ChatId == chatId).MaxAsync(message => (long?)message.Id) ?? 0;
+        db.ChatMembers.AddRange(users.Select(user => new ChatMember { ChatId = chatId, UserId = user.Id, LastReadMessageId = newest }));
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException e) when (IsUniqueViolation(e))
+        {
+            // Someone else added one of them at the same moment; whoever is missing can be added again.
+            db.ChangeTracker.Clear();
+            return [];
+        }
+        return users;
+    }
+
+    /// <summary>
+    /// Takes the user out of the group. An owner who leaves hands the group to the member who has read it furthest,
+    /// the one most likely still active in it; the last one to leave deletes it with its history.
+    /// Returns whether the group still exists.
+    /// </summary>
+    public async Task<bool> RemoveMemberAsync(Guid chatId, Guid userId)
+    {
+        await db.ChatMembers.Where(member => member.ChatId == chatId && member.UserId == userId).ExecuteDeleteAsync();
+        var remaining = await db.ChatMembers.Where(member => member.ChatId == chatId)
+            .OrderByDescending(member => member.LastReadMessageId).Select(member => member.UserId).ToListAsync();
+        if (remaining.Count == 0)
+        {
+            await db.Messages.Where(message => message.ChatId == chatId).ExecuteDeleteAsync();
+            await db.Chats.Where(chat => chat.Id == chatId).ExecuteDeleteAsync();
+            return false;
+        }
+
+        await db.Chats.Where(chat => chat.Id == chatId && chat.OwnerId == userId)
+            .ExecuteUpdateAsync(set => set.SetProperty(chat => chat.OwnerId, remaining[0]));
+        return true;
+    }
+
+    /// <summary>A line about a change to the group, from whoever made it.</summary>
+    public async Task<MessageDto> AddSystemMessageAsync(Guid chatId, Guid actorId, string text)
+    {
+        var message = new Message { ChatId = chatId, SenderId = actorId, Text = text, ClientMessageId = Guid.NewGuid(), Kind = MessageKind.System };
+        db.Messages.Add(message);
+        await db.SaveChangesAsync();
+        await db.Entry(message).Reference(x => x.Sender).LoadAsync();
+        await AdvanceReadAsync(chatId, actorId, message.Id);
+        return ToDto(message);
     }
 
     public async Task<List<MessageDto>> HistoryAsync(Guid chatId, long? beforeId, int limit)
@@ -224,7 +292,7 @@ public class ChatService(AppDbContext db)
             ? members.FirstOrDefault(member => member.Id != viewerId)?.DisplayName ?? ""
             : chat.Title ?? "";
         var readUpTo = chat.Members.Where(member => member.UserId != viewerId).Select(member => member.LastReadMessageId).DefaultIfEmpty().Max();
-        return new ChatDto(chat.Id, chat.Kind, title, members, last is null ? null : ToDto(last), unread, readUpTo);
+        return new ChatDto(chat.Id, chat.Kind, title, members, last is null ? null : ToDto(last), unread, readUpTo, chat.OwnerId);
     }
 
     public static UserDto ToDto(User user) => new(user.Id, user.UserName, user.DisplayName);

@@ -22,6 +22,8 @@ public class Chat
     public string? Title { get; set; }
     /// <summary>Both user ids in a fixed order; its unique index allows one direct chat per pair.</summary>
     public string? DirectKey { get; set; }
+    /// <summary>A group's owner: whoever created it, or the member it passed to when they left.</summary>
+    public Guid? OwnerId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public List<ChatMember> Members { get; set; } = [];
 }

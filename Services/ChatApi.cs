@@ -21,6 +21,8 @@ namespace Mi_nU.Services
     [JsonSerializable(typeof(IceServersDto))]
     [JsonSerializable(typeof(RegisterDeviceRequest))]
     [JsonSerializable(typeof(List<Presence>))]
+    [JsonSerializable(typeof(RenameGroupRequest))]
+    [JsonSerializable(typeof(AddMembersRequest))]
     internal partial class ChatJsonContext : JsonSerializerContext;
 
     public class ChatApi(AuthService auth)
@@ -50,6 +52,20 @@ namespace Mi_nU.Services
             SendAsync(HttpMethod.Post, "/api/chats/group",
                 JsonContent.Create(new CreateGroupChatRequest(title, memberIds), ChatJsonContext.Default.CreateGroupChatRequest),
                 ChatJsonContext.Default.ChatDto);
+
+        public Task<ChatDto> RenameGroupAsync(Guid chatId, string title) =>
+            SendAsync(HttpMethod.Put, $"/api/chats/{chatId}/title",
+                JsonContent.Create(new RenameGroupRequest(title), ChatJsonContext.Default.RenameGroupRequest),
+                ChatJsonContext.Default.ChatDto);
+
+        public Task<ChatDto> AddMembersAsync(Guid chatId, IReadOnlyList<Guid> userIds) =>
+            SendAsync(HttpMethod.Post, $"/api/chats/{chatId}/members",
+                JsonContent.Create(new AddMembersRequest(userIds), ChatJsonContext.Default.AddMembersRequest),
+                ChatJsonContext.Default.ChatDto);
+
+        /// <summary>Removing oneself is leaving the group.</summary>
+        public Task RemoveMemberAsync(Guid chatId, Guid userId) =>
+            SendAsync(HttpMethod.Delete, $"/api/chats/{chatId}/members/{userId}");
 
         public Task<List<MessageDto>> GetMessagesAsync(Guid chatId, long? before = null) =>
             SendAsync(HttpMethod.Get, $"/api/chats/{chatId}/messages{(before is null ? "" : $"?before={before}")}", null, ChatJsonContext.Default.ListMessageDto);

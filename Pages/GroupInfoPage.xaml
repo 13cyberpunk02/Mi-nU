@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- A group's page: its name, its members, and leaving it. -->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:pages="clr-namespace:Mi_nU.Pages"
+             xmlns:controls="clr-namespace:Mi_nU.Controls"
+             xmlns:themes="clr-namespace:Mi_nU.Themes"
+             x:Class="Mi_nU.Pages.GroupInfoPage"
+             Title="Группа">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Padding="16,8,16,16" RowSpacing="12" MaximumWidthRequest="{StaticResource ReadableWidth}">
+        <VerticalStackLayout Spacing="8" HorizontalOptions="Center" Margin="0,8,0,4">
+            <controls:Avatar x:Name="GroupAvatar" Size="72" HorizontalOptions="Center" />
+            <Label x:Name="GroupName" AutomationId="GroupName" Style="{StaticResource Heading}" HorizontalTextAlignment="Center" />
+            <Label x:Name="GroupSize" Style="{StaticResource Caption}" HorizontalTextAlignment="Center" />
+        </VerticalStackLayout>
+
+        <VerticalStackLayout Grid.Row="1" Spacing="6">
+            <Label Text="Название" Style="{StaticResource FieldLabel}" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Border Style="{StaticResource Field}">
+                    <Entry x:Name="TitleEntry" AutomationId="GroupTitle" TextChanged="OnTitleChanged" ReturnType="Done" Completed="OnRenameClicked" />
+                </Border>
+                <Button Grid.Column="1" x:Name="RenameButton" AutomationId="GroupRename" Text="Сохранить" IsEnabled="False" Clicked="OnRenameClicked" />
+            </Grid>
+        </VerticalStackLayout>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+            <Label Text="Участники" Style="{StaticResource FieldLabel}" VerticalTextAlignment="Center" />
+            <Button Grid.Column="1" AutomationId="GroupAdd" Text="Добавить" Style="{StaticResource SecondaryButton}" Clicked="OnAddClicked" />
+        </Grid>
+
+        <Label Grid.Row="3" x:Name="ErrorLabel" AutomationId="GroupError" IsVisible="False" Style="{StaticResource Error}" />
+
+        <CollectionView Grid.Row="4" x:Name="Members" AutomationId="GroupMembers" SelectionMode="None">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="pages:MemberRow">
+                    <Grid ColumnDefinitions="44,*,Auto" ColumnSpacing="12" Padding="4,8">
+                        <controls:Avatar Name="{Binding Name}" Seed="{Binding Name}" Size="44" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                            <Label Text="{Binding Name}" Style="{StaticResource Name}" />
+                            <Label Text="{Binding Details}" Style="{StaticResource Caption}" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="2" Text="{x:Static themes:Icons.Close}" Style="{StaticResource IconButton}" IsVisible="{Binding CanRemove}"
+                                AutomationId="GroupRemove" CommandParameter="{Binding User}" Clicked="OnRemoveClicked"
+                                SemanticProperties.Description="{Binding RemoveDescription}" />
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Button Grid.Row="5" x:Name="LeaveButton" AutomationId="GroupLeave" Text="Выйти из группы" Style="{StaticResource SecondaryButton}"
+                TextColor="{DynamicResource DangerText}" Clicked="OnLeaveClicked" />
+    </Grid>
+
+</ContentPage>

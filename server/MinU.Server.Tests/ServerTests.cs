@@ -533,6 +533,79 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
     }
 
     [Fact]
+    public async Task Group_can_be_renamed_and_grown_by_any_member()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var carol = await server.RegisterAsync("carol");
+        var group = await alice.GroupWithAsync("team", bob);
+        Assert.Equal(alice.User.Id, group.OwnerId);
+        await alice.SendAsync(group.Id, "before carol");
+
+        var aliceUpdated = alice.Next<ChatDto>("ChatUpdated");
+        var aliceLine = alice.Next<MessageDto>("MessageReceived");
+        var renamed = await bob.Http.PutAsJsonAsync($"/api/chats/{group.Id}/title", new RenameGroupRequest(" crew "));
+        renamed.EnsureSuccessStatusCode();
+        Assert.Equal("crew", (await aliceUpdated).Title);
+        var line = await aliceLine;
+        Assert.Equal((MessageKind.System, "bob переименовал(а) группу в «crew»"), (line.Kind, line.Text));
+
+        var carolCreated = carol.Next<ChatDto>("ChatCreated");
+        var bobUpdated = bob.Next<ChatDto>("ChatUpdated");
+        var added = await bob.Http.PostAsJsonAsync($"/api/chats/{group.Id}/members", new AddMembersRequest([carol.User.Id, bob.User.Id]));
+        added.EnsureSuccessStatusCode();
+        Assert.Equal(3, (await carolCreated).Members.Count);
+        Assert.Equal(3, (await bobUpdated).Members.Count);
+
+        // Carol takes part from now on: only the line about her joining is new to her, not the history before.
+        var chats = await carol.Http.GetFromJsonAsync<List<ChatDto>>("/api/chats");
+        var carolsView = chats!.Single(x => x.Id == group.Id);
+        Assert.Equal(1, carolsView.UnreadCount);
+        Assert.Equal("bob добавил(а) carol", carolsView.LastMessage!.Text);
+        await carol.SendAsync(group.Id, "hi, I'm new");
+
+        // A direct chat has no title of its own to change.
+        var direct = await alice.DirectChatWithAsync(bob);
+        var refused = await alice.Http.PutAsJsonAsync($"/api/chats/{direct.Id}/title", new RenameGroupRequest("x"));
+        Assert.Equal(HttpStatusCode.NotFound, refused.StatusCode);
+    }
+
+    [Fact]
+    public async Task Only_the_owner_removes_others_and_ownership_passes_on_when_the_owner_leaves()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var carol = await server.RegisterAsync("carol");
+        var group = await alice.GroupWithAsync("team", bob, carol);
+
+        var refused = await bob.Http.DeleteAsync($"/api/chats/{group.Id}/members/{carol.User.Id}");
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+
+        var carolRemoved = carol.Next<Guid>("ChatRemoved");
+        var bobLine = bob.Next<MessageDto>("MessageReceived");
+        Assert.Equal(HttpStatusCode.NoContent, (await alice.Http.DeleteAsync($"/api/chats/{group.Id}/members/{carol.User.Id}")).StatusCode);
+        Assert.Equal(group.Id, await carolRemoved);
+        Assert.Equal("alice удалил(а) carol", (await bobLine).Text);
+        await Assert.ThrowsAsync<HubException>(() => carol.SendAsync(group.Id, "still here?"));
+        Assert.Equal(HttpStatusCode.NotFound, (await carol.Http.GetAsync($"/api/chats/{group.Id}/messages")).StatusCode);
+
+        var bobUpdated = bob.Next<ChatDto>("ChatUpdated");
+        Assert.Equal(HttpStatusCode.NoContent, (await alice.Http.DeleteAsync($"/api/chats/{group.Id}/members/{alice.User.Id}")).StatusCode);
+        var afterLeaving = await bobUpdated;
+        Assert.Equal(bob.User.Id, afterLeaving.OwnerId);
+        Assert.Equal("alice вышел(а) из группы", afterLeaving.LastMessage!.Text);
+
+        // The last one out takes the group with them.
+        var bobRemoved = bob.Next<Guid>("ChatRemoved");
+        Assert.Equal(HttpStatusCode.NoContent, (await bob.Http.DeleteAsync($"/api/chats/{group.Id}/members/{bob.User.Id}")).StatusCode);
+        Assert.Equal(group.Id, await bobRemoved);
+        using var scope = server.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.Chats.AnyAsync(x => x.Id == group.Id));
+        Assert.False(await db.Messages.AnyAsync(x => x.ChatId == group.Id));
+    }
+
+    [Fact]
     public async Task Unanswered_call_leaves_a_missed_call_in_the_chat()
     {
         var alice = await server.RegisterAsync("alice");

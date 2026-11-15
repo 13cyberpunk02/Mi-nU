@@ -10,18 +10,31 @@ namespace Mi_nU.Pages
         public bool NotSelected => !Selected;
     }
 
-    public partial class NewGroupPage : ContentPage
+    /// <summary>Creates a group, or with an "addTo" chat in the query, adds people to that group.</summary>
+    public partial class NewGroupPage : ContentPage, IQueryAttributable
     {
         readonly ChatApi _api;
         readonly UserSearch _search;
         readonly Dictionary<Guid, UserDto> _selected = [];
         List<UserDto> _found = [];
+        ChatDto? _addTo;
 
         public NewGroupPage(ChatApi api)
         {
             InitializeComponent();
             _api = api;
             _search = new UserSearch(api);
+        }
+
+        public void ApplyQueryAttributes(IDictionary<string, object> query)
+        {
+            if (query.TryGetValue("addTo", out var value) && value is ChatDto chat)
+            {
+                _addTo = chat;
+                Title = "Добавить участников";
+                TitleSection.IsVisible = false;
+                CreateButton.Text = "Добавить";
+            }
         }
 
         async void OnSearchChanged(object? sender, TextChangedEventArgs e)
@@ -59,6 +72,12 @@ namespace Mi_nU.Pages
 
         async void OnCreateClicked(object? sender, EventArgs e)
         {
+            if (_addTo is { } group)
+            {
+                await AddToGroupAsync(group);
+                return;
+            }
+
             var title = TitleEntry.Text?.Trim() ?? "";
             if (title.Length is 0 or > Limits.ChatTitleMax)
             {
@@ -89,8 +108,37 @@ namespace Mi_nU.Pages
             }
         }
 
+        async Task AddToGroupAsync(ChatDto group)
+        {
+            if (_selected.Count == 0)
+            {
+                ShowError("Выберите, кого добавить.");
+                return;
+            }
+
+            CreateButton.IsEnabled = false;
+            try
+            {
+                var updated = await _api.AddMembersAsync(group.Id, [.. _selected.Keys]);
+                // Straight into the list, which the group page reads on its way back; the server's event may come later.
+                MainPage.Current?.ApplyUpdate(updated);
+                await Shell.Current.GoToAsync("..");
+            }
+            catch (ApiException error)
+            {
+                ShowError(error.Message);
+            }
+            finally
+            {
+                CreateButton.IsEnabled = true;
+            }
+        }
+
+        // People already in the group aren't offered again.
         void ShowResults() =>
-            Results.ItemsSource = _found.Select(user => new GroupUserRow(user, _selected.ContainsKey(user.Id))).ToList();
+            Results.ItemsSource = _found
+                .Where(user => _addTo is null || _addTo.Members.All(member => member.Id != user.Id))
+                .Select(user => new GroupUserRow(user, _selected.ContainsKey(user.Id))).ToList();
 
         void ShowError(string message)
         {
