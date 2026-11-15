@@ -61,8 +61,12 @@ namespace Mi_nU.Services
             _ = ConnectAsync(hub, _stop.Token);
         }
 
-        public Task<MessageDto> SendMessageAsync(Guid chatId, string text, Guid clientMessageId) =>
-            Connection().InvokeAsync<MessageDto>("SendMessage", chatId, text, clientMessageId);
+        public async Task<MessageDto> SendMessageAsync(Guid chatId, string text, Guid clientMessageId)
+        {
+            // Right after signing in the connection is still being set up; a message typed that fast shouldn't fail.
+            await WaitConnectedAsync(TimeSpan.FromSeconds(10));
+            return await Connection().InvokeAsync<MessageDto>("SendMessage", chatId, text, clientMessageId);
+        }
 
         public Task<CallJoinResult> StartCallAsync(Guid chatId, bool video) =>
             Connection().InvokeAsync<CallJoinResult>("StartCall", chatId, video);
