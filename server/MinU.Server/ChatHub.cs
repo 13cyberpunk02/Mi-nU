@@ -54,7 +54,7 @@ public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db, Pus
         await RequireMemberAsync(chatId);
         var me = await CurrentUserAsync();
 
-        var (result, started) = calls.JoinOrStart(chatId, Context.ConnectionId, me);
+        var (result, started) = calls.JoinOrStart(chatId, Context.ConnectionId, me, video);
         if (result is null)
             throw new HubException($"The call is full: at most {CallLimits.MaxParticipants} people can take part.");
 
@@ -140,6 +140,14 @@ public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db, Pus
             var members = await chats.MemberIdsAsync(departure.Call.ChatId);
             await Clients.Users(members.Select(id => id.ToString())).CallEnded(departure.Call.Id);
             push.CallEnded(members, departure.Call.Id);
+
+            var call = departure.Call;
+            var record = await chats.AddCallRecordAsync(call, DateTimeOffset.UtcNow);
+            await Clients.Users(members.Select(id => id.ToString())).MessageReceived(record);
+            // Whoever never picked up gets a missed call notification in place of the stopped ringing.
+            var missed = members.Where(id => !call.Joined.Contains(id)).ToList();
+            var text = call.Video ? "Пропущенный видеозвонок" : "Пропущенный звонок";
+            push.Message(missed, record with { Text = text }, await chats.GroupTitleAsync(call.ChatId));
         }
         else
             await Clients.Clients(departure.Call.Participants.Keys.ToList()).CallParticipantLeft(departure.Participant);

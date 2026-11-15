@@ -110,6 +110,12 @@ public sealed class FakePushSender : IPushSender
         throw new TimeoutException($"No {type} push to {token}");
     }
 
+    public int CountOf(string token, string type)
+    {
+        lock (_sent)
+            return _sent.Count(x => x.Token == token && x.Data[PushKeys.Type] == type);
+    }
+
     public int CountTo(string token)
     {
         lock (_sent)
@@ -524,6 +530,68 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         Assert.Equal(0, (await ChatOf(bob)).UnreadCount);
         Assert.Equal(1, (await ChatOf(alice)).UnreadCount);
         Assert.Equal(reply.Id, (await ChatOf(alice)).ReadUpTo);
+    }
+
+    [Fact]
+    public async Task Unanswered_call_leaves_a_missed_call_in_the_chat()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var bobDevice = await bob.RegisterDeviceAsync();
+        var chat = await alice.DirectChatWithAsync(bob);
+
+        var started = await alice.Hub.InvokeAsync<CallJoinResult>("StartCall", chat.Id, true);
+        var bobGot = bob.Next<MessageDto>("MessageReceived");
+        await alice.Hub.InvokeAsync("LeaveCall", started.CallId);
+
+        var record = await bobGot;
+        Assert.Equal(MessageKind.Call, record.Kind);
+        Assert.Equal(new CallSummary(true, null), record.Call);
+        Assert.Equal(alice.User.Id, record.Sender.Id);
+        Assert.Equal("Видеозвонок без ответа", record.Text);
+
+        var history = await bob.Http.GetFromJsonAsync<List<MessageDto>>($"/api/chats/{chat.Id}/messages");
+        var stored = Assert.Single(history!);
+        Assert.Equal((record.Id, record.Kind, record.Call), (stored.Id, stored.Kind, stored.Call));
+
+        // Missed by bob only: the caller was there.
+        var chats = await bob.Http.GetFromJsonAsync<List<ChatDto>>("/api/chats");
+        Assert.Equal(1, chats!.Single(x => x.Id == chat.Id).UnreadCount);
+        chats = await alice.Http.GetFromJsonAsync<List<ChatDto>>("/api/chats");
+        Assert.Equal(0, chats!.Single(x => x.Id == chat.Id).UnreadCount);
+
+        var push = await server.Push.NextAsync(bobDevice, PushKeys.TypeMessage);
+        Assert.Equal(("alice", "Пропущенный видеозвонок"), (push[PushKeys.Sender], push[PushKeys.Text]));
+    }
+
+    [Fact]
+    public async Task Answered_call_is_recorded_with_its_length_and_read_by_both()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var bobDevice = await bob.RegisterDeviceAsync();
+        var chat = await alice.DirectChatWithAsync(bob);
+
+        var started = await alice.Hub.InvokeAsync<CallJoinResult>("StartCall", chat.Id, false);
+        await bob.Hub.InvokeAsync<CallJoinResult>("JoinCall", started.CallId);
+        await Task.Delay(1100);
+        await bob.Hub.InvokeAsync("LeaveCall", started.CallId);
+        var aliceGot = alice.Next<MessageDto>("MessageReceived");
+        await alice.Hub.InvokeAsync("LeaveCall", started.CallId);
+
+        var record = await aliceGot;
+        Assert.False(record.Call!.Video);
+        Assert.InRange(record.Call.DurationSeconds!.Value, 1, 10);
+        Assert.StartsWith("Звонок, 0:0", record.Text);
+
+        foreach (var client in new[] { alice, bob })
+        {
+            var chats = await client.Http.GetFromJsonAsync<List<ChatDto>>("/api/chats");
+            Assert.Equal(0, chats!.Single(x => x.Id == chat.Id).UnreadCount);
+        }
+        // Bob answered, so no missed call for him.
+        await Task.Delay(300);
+        Assert.Equal(0, server.Push.CountOf(bobDevice, PushKeys.TypeMessage));
     }
 
     [Fact]

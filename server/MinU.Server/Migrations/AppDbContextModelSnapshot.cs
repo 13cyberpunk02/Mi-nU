@@ -109,11 +109,20 @@ namespace MinU.Server.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<int?>("CallSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CallVideo")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("ChatId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("ClientMessageId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("SenderId")
                         .HasColumnType("uuid");

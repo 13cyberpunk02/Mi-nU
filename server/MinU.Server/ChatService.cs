@@ -156,6 +156,51 @@ public class ChatService(AppDbContext db)
     }
 
     /// <summary>
+    /// Puts an ended call into its chat, from the caller. Whoever took part has nothing to read in it,
+    /// so it stays unread only for those who missed the call.
+    /// </summary>
+    public async Task<MessageDto> AddCallRecordAsync(CallRegistry.Call call, DateTimeOffset endedAt)
+    {
+        int? seconds = call.AnsweredAt is { } answered ? (int)Math.Max(0, Math.Round((endedAt - answered).TotalSeconds)) : null;
+        var message = new Message
+        {
+            ChatId = call.ChatId,
+            SenderId = call.Caller.Id,
+            Text = CallText(call.Video, seconds),
+            SentAt = endedAt,
+            // The call's id: the record of a call can't be added twice.
+            ClientMessageId = call.Id,
+            Kind = MessageKind.Call,
+            CallVideo = call.Video,
+            CallSeconds = seconds,
+        };
+        db.Messages.Add(message);
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException e) when (IsUniqueViolation(e))
+        {
+            db.ChangeTracker.Clear();
+            return ToDto((await FindMessageAsync(call.Caller.Id, call.Id))!);
+        }
+
+        await db.Entry(message).Reference(x => x.Sender).LoadAsync();
+        foreach (var userId in call.Joined)
+            await AdvanceReadAsync(call.ChatId, userId, message.Id);
+        return ToDto(message);
+    }
+
+    /// <summary>The record's text for apps without call records; newer ones word it for each viewer.</summary>
+    static string CallText(bool video, int? seconds) => seconds is { } s
+        ? $"{(video ? "Видеозвонок" : "Звонок")}, {Duration(s)}"
+        : video ? "Видеозвонок без ответа" : "Звонок без ответа";
+
+    static string Duration(int seconds) => seconds >= 3600
+        ? $"{seconds / 3600}:{seconds / 60 % 60:00}:{seconds % 60:00}"
+        : $"{seconds / 60}:{seconds % 60:00}";
+
+    /// <summary>
     /// Moves the member's read mark forward to <paramref name="messageId"/>, never past the chat's newest message.
     /// Null when nothing changed: the mark was already there, or the chat is empty.
     /// </summary>
@@ -185,7 +230,8 @@ public class ChatService(AppDbContext db)
     public static UserDto ToDto(User user) => new(user.Id, user.UserName, user.DisplayName);
 
     static MessageDto ToDto(Message message) =>
-        new(message.Id, message.ChatId, ToDto(message.Sender), message.Text, message.SentAt, message.ClientMessageId);
+        new(message.Id, message.ChatId, ToDto(message.Sender), message.Text, message.SentAt, message.ClientMessageId,
+            message.Kind, message.Kind == MessageKind.Call ? new CallSummary(message.CallVideo, message.CallSeconds) : null);
 
     Task<Chat?> FindDirectAsync(string key) => Chats().FirstOrDefaultAsync(chat => chat.DirectKey == key);
 

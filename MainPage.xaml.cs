@@ -15,6 +15,7 @@ namespace Mi_nU
         public string Preview => Chat.LastMessage switch
         {
             null => Chat.Kind == ChatKind.Group ? $"Участников: {Chat.Members.Count}" : "Сообщений пока нет",
+            { Call: { } call } => Formatting.CallLine(call, LastIsMine),
             var last when LastIsMine && Chat.Kind == ChatKind.Group => $"Вы: {last.Text}",
             var last when Chat.Kind == ChatKind.Group => $"{last.Sender.DisplayName}: {last.Text}",
             var last => last.Text,
@@ -27,7 +28,7 @@ namespace Mi_nU
 
         bool LastIsMine => Viewer != default && Chat.LastMessage?.Sender.Id == Viewer;
         bool LastRead => Chat.LastMessage is { } last && last.Id <= Chat.ReadUpTo;
-        public bool ShowReceipt => LastIsMine;
+        public bool ShowReceipt => LastIsMine && Chat.LastMessage?.Kind == MessageKind.Text;
         public string Receipt => LastRead ? Themes.Icons.CheckCheck : Themes.Icons.Check;
         public bool ReceiptRead => LastRead;
     }
@@ -49,6 +50,28 @@ namespace Mi_nU
                 return "Вчера";
             return date.ToString(date.Year == DateTime.Today.Year ? "d MMMM" : "d MMMM yyyy");
         }
+
+        /// <summary>A call as the viewer saw it: <paramref name="outgoing"/> when they were the caller.</summary>
+        public static string CallTitle(CallSummary call, bool outgoing) => (call.DurationSeconds, outgoing, call.Video) switch
+        {
+            (null, true, false) => "Звонок без ответа",
+            (null, true, true) => "Видеозвонок без ответа",
+            (null, false, false) => "Пропущенный звонок",
+            (null, false, true) => "Пропущенный видеозвонок",
+            (_, true, false) => "Исходящий звонок",
+            (_, true, true) => "Исходящий видеозвонок",
+            (_, false, false) => "Входящий звонок",
+            (_, false, true) => "Входящий видеозвонок",
+        };
+
+        /// <summary>The title with the length of an answered call, for the chat list.</summary>
+        public static string CallLine(CallSummary call, bool outgoing) => call.DurationSeconds is { } seconds
+            ? $"{CallTitle(call, outgoing)}, {Duration(seconds)}"
+            : CallTitle(call, outgoing);
+
+        public static string Duration(int seconds) => seconds >= 3600
+            ? $"{seconds / 3600}:{seconds / 60 % 60:00}:{seconds % 60:00}"
+            : $"{seconds / 60}:{seconds % 60:00}";
     }
 
     public partial class MainPage : ContentPage

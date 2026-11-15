@@ -62,10 +62,68 @@
                 </Border>
             </VerticalStackLayout>
         </DataTemplate>
+        <!-- A call: the icon in a circle, what happened, and when; a tap calls back. -->
+        <DataTemplate x:Key="MineCallTemplate" x:DataType="controls:MessageRow">
+            <VerticalStackLayout Padding="64,0,12,0" Margin="{Binding Spacing}">
+                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
+                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
+                </Border>
+                <Border HorizontalOptions="End" Padding="10,8,14,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
+                        BackgroundColor="{DynamicResource BubbleMine}" SemanticProperties.Description="{Binding CallDescription}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <Border WidthRequest="36" HeightRequest="36" StrokeThickness="0" StrokeShape="RoundRectangle 18"
+                                BackgroundColor="{DynamicResource Surface}" VerticalOptions="Center">
+                            <Label Text="{Binding CallIcon}" FontFamily="Icons" FontSize="18" TextColor="{DynamicResource AccentText}"
+                                   HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                            <Label Text="{Binding CallTitle}" FontFamily="InterSemiBold" FontSize="15" />
+                            <Label Text="{Binding CallDetails}" Style="{StaticResource Small}" TextColor="{DynamicResource BubbleMineMuted}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
+        </DataTemplate>
+        <DataTemplate x:Key="OtherCallTemplate" x:DataType="controls:MessageRow">
+            <VerticalStackLayout Padding="12,0,64,0" Margin="{Binding Spacing}">
+                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
+                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
+                </Border>
+                <Border HorizontalOptions="Start" Padding="10,8,14,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,6,18"
+                        BackgroundColor="{DynamicResource BubbleOther}" SemanticProperties.Description="{Binding CallDescription}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <Border WidthRequest="36" HeightRequest="36" StrokeThickness="0" StrokeShape="RoundRectangle 18"
+                                BackgroundColor="{DynamicResource AccentSoft}" VerticalOptions="Center">
+                            <Label Text="{Binding CallIcon}" FontFamily="Icons" FontSize="18" TextColor="{DynamicResource AccentText}"
+                                   HorizontalTextAlignment="Center" VerticalTextAlignment="Center">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding CallMissed}" Value="True">
+                                        <Setter Property="TextColor" Value="{DynamicResource DangerText}" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                            <Label Text="{Binding Sender}" IsVisible="{Binding ShowSenderName}" FontFamily="InterSemiBold" FontSize="13" TextColor="{DynamicResource AccentText}" />
+                            <Label Text="{Binding CallTitle}" FontFamily="InterSemiBold" FontSize="15">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding CallMissed}" Value="True">
+                                        <Setter Property="TextColor" Value="{DynamicResource DangerText}" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                            <Label Text="{Binding CallDetails}" Style="{StaticResource Small}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
+        </DataTemplate>
         <controls:MessageTemplateSelector x:Key="MessageSelector"
                                           Mine="{StaticResource MineTemplate}"
                                           MineFailed="{StaticResource MineFailedTemplate}"
-                                          Other="{StaticResource OtherTemplate}" />
+                                          Other="{StaticResource OtherTemplate}"
+                                          MineCall="{StaticResource MineCallTemplate}"
+                                          OtherCall="{StaticResource OtherCallTemplate}" />
     </ContentView.Resources>
 
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">

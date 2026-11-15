@@ -5,14 +5,20 @@ namespace MinU.Server;
 /// <summary>Calls in progress. They live in memory, so this server can only run as a single instance.</summary>
 public class CallRegistry
 {
-    public record Call(Guid Id, Guid ChatId, Dictionary<string, UserDto> Participants);
+    /// <summary><see cref="AnsweredAt"/> is when a second person joined; null while only the caller is in.</summary>
+    public record Call(Guid Id, Guid ChatId, Dictionary<string, UserDto> Participants, UserDto Caller, bool Video, DateTimeOffset StartedAt)
+    {
+        public DateTimeOffset? AnsweredAt { get; set; }
+        /// <summary>Everyone who was in the call at some point.</summary>
+        public HashSet<Guid> Joined { get; } = [];
+    }
     public record Departure(Call Call, CallParticipant Participant, bool Ended);
 
     readonly Lock _lock = new();
     readonly Dictionary<Guid, Call> _calls = [];
 
     /// <summary>Joins the chat's call, starting it if there is none. <c>Started</c> is false when one was already running.</summary>
-    public (CallJoinResult? Result, bool Started) JoinOrStart(Guid chatId, string connectionId, UserDto user)
+    public (CallJoinResult? Result, bool Started) JoinOrStart(Guid chatId, string connectionId, UserDto user, bool video)
     {
         lock (_lock)
         {
@@ -20,7 +26,7 @@ public class CallRegistry
             var started = call is null;
             if (call is null)
             {
-                call = new Call(Guid.NewGuid(), chatId, []);
+                call = new Call(Guid.NewGuid(), chatId, [], user, video, DateTimeOffset.UtcNow);
                 _calls.Add(call.Id, call);
             }
 
@@ -76,6 +82,10 @@ public class CallRegistry
             return null;
 
         call.Participants[connectionId] = user;
+        call.Joined.Add(user.Id);
+        // The caller's own second device joining doesn't make it answered.
+        if (user.Id != call.Caller.Id)
+            call.AnsweredAt ??= DateTimeOffset.UtcNow;
         var others = call.Participants
             .Where(x => x.Key != connectionId)
             .Select(x => new CallParticipant(call.Id, x.Key, x.Value))

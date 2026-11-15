@@ -32,8 +32,18 @@ public record Presence(Guid UserId, bool Online, DateTimeOffset? LastSeenAt);
 /// <summary><see cref="UserId"/> has read <see cref="ChatId"/> up to and including message <see cref="MessageId"/>.</summary>
 public record ReadReceipt(Guid ChatId, Guid UserId, long MessageId);
 
-/// <summary><see cref="Id"/> grows within the server, so it orders messages and pages history.</summary>
-public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, DateTimeOffset SentAt, Guid ClientMessageId);
+public enum MessageKind { Text, Call }
+
+/// <summary>A call that has ended. <see cref="DurationSeconds"/> is null when nobody answered.</summary>
+public record CallSummary(bool Video, int? DurationSeconds);
+
+/// <summary>
+/// <see cref="Id"/> grows within the server, so it orders messages and pages history.
+/// A <see cref="MessageKind.Call"/> record comes from the server when a call ends; its <see cref="Sender"/> is the caller,
+/// and <see cref="Text"/> describes it for apps that don't know call records.
+/// </summary>
+public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, DateTimeOffset SentAt, Guid ClientMessageId,
+    MessageKind Kind = MessageKind.Text, CallSummary? Call = null);
 
 /// <summary>
 /// STUN and TURN servers for calls: one ICE server per URL, all with these credentials.

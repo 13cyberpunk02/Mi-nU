@@ -44,6 +44,11 @@ public class Message
     public required string Text { get; set; }
     public DateTimeOffset SentAt { get; set; } = DateTimeOffset.UtcNow;
     public Guid ClientMessageId { get; set; }
+    public MessageKind Kind { get; set; }
+    /// <summary>For a call record: whether it was a video call.</summary>
+    public bool CallVideo { get; set; }
+    /// <summary>For a call record: how long it lasted from the answer; null when nobody answered.</summary>
+    public int? CallSeconds { get; set; }
 }
 
 /// <summary>Where to send a user's push notifications: one row per installed app.</summary>

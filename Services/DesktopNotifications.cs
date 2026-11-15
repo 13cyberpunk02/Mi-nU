@@ -72,6 +72,10 @@ namespace Mi_nU.Services
         {
             if (WindowActive || !_registered || message.Sender.Id == _auth.Session?.User.Id)
                 return;
+            // An answered call needs no reminder; one nobody answered is a missed call.
+            if (message.Call is { DurationSeconds: not null })
+                return;
+            var text = message.Call is { } call ? Formatting.CallTitle(call, outgoing: false) : message.Text;
 
             var group = _chats.TryGetValue(message.ChatId, out var chat) && chat.Kind == ChatKind.Group ? chat.Title : null;
 #if WINDOWS
@@ -79,13 +83,13 @@ namespace Mi_nU.Services
                 .AddArgument("action", "open_chat")
                 .AddArgument("chat", message.ChatId.ToString())
                 .AddText(group is null ? message.Sender.DisplayName : $"{message.Sender.DisplayName} · {group}")
-                .AddText(message.Text)
+                .AddText(text)
                 // One notification per chat: a new message replaces the previous one instead of piling up.
                 .SetTag(message.ChatId.ToString())
                 .BuildNotification();
             AppNotificationManager.Default.Show(notification);
 #else
-            _ = group;
+            _ = (group, text);
 #endif
         }
 

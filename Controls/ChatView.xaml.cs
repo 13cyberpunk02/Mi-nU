@@ -16,6 +16,22 @@ namespace Mi_nU.Controls
         /// <summary>Someone else in the chat has seen this message; only kept for one's own messages.</summary>
         public bool Read { get; init; }
 
+        /// <summary>Set for a call record, which shows as a call instead of text.</summary>
+        public CallSummary? Call { get; init; }
+        public string CallTitle => Call is null ? "" : Formatting.CallTitle(Call, IsMine);
+        public string CallIcon => Call switch
+        {
+            { DurationSeconds: null } when !IsMine => Themes.Icons.PhoneMissed,
+            { Video: true } => Themes.Icons.Video,
+            _ when IsMine => Themes.Icons.PhoneOutgoing,
+            _ => Themes.Icons.PhoneIncoming,
+        };
+        public bool CallMissed => Call is { DurationSeconds: null } && !IsMine;
+        public string CallDetails => Call?.DurationSeconds is { } seconds
+            ? $"{Formatting.Time(SentAt)} · {Formatting.Duration(seconds)}"
+            : Formatting.Time(SentAt);
+        public string CallDescription => $"{CallTitle}, {CallDetails}. Нажмите, чтобы позвонить";
+
         public bool ShowReceipt => IsMine && State == MessageState.Sent;
         public string Receipt => Read ? Themes.Icons.CheckCheck : Themes.Icons.Check;
         public string ReceiptDescription => Read ? "Прочитано" : "Отправлено";
@@ -35,9 +51,13 @@ namespace Mi_nU.Controls
         public DataTemplate? Mine { get; set; }
         public DataTemplate? MineFailed { get; set; }
         public DataTemplate? Other { get; set; }
+        public DataTemplate? MineCall { get; set; }
+        public DataTemplate? OtherCall { get; set; }
 
         protected override DataTemplate? OnSelectTemplate(object item, BindableObject container) => item switch
         {
+            MessageRow { Call: not null, IsMine: true } => MineCall,
+            MessageRow { Call: not null } => OtherCall,
             MessageRow { IsMine: false } => Other,
             MessageRow { State: MessageState.Failed } => MineFailed,
             _ => Mine,
@@ -329,6 +349,12 @@ namespace Mi_nU.Controls
                 return;
 
             Messages.SelectedItem = null;
+            // A tap on a call calls back the same way.
+            if (row.Call is { } call)
+            {
+                await StartCallAsync(call.Video);
+                return;
+            }
             if (row.State != MessageState.Failed || _chat is null)
                 return;
 
@@ -407,6 +433,7 @@ namespace Mi_nU.Controls
                 _chat?.Kind == ChatKind.Group && !mine, mine, message.SentAt, MessageState.Sent)
             {
                 Read = mine && message.Id <= _readUpTo,
+                Call = message.Kind == MessageKind.Call ? message.Call : null,
             };
         }
 

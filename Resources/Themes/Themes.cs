@@ -55,6 +55,9 @@ namespace Mi_nU.Themes
         public const string Check = "";
         /// <summary>Two ticks: a message someone has read.</summary>
         public const string CheckCheck = "\uE392";
+        public const string PhoneIncoming = "\uE13A";
+        public const string PhoneOutgoing = "\uE13D";
+        public const string PhoneMissed = "\uE13B";
         public const string Close = "";
         public const string LogOut = "";
     }
