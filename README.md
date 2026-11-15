@@ -30,7 +30,7 @@ A messenger for Android and Windows, built with .NET MAUI and an ASP.NET Core se
 
 ## Getting started
 
-You need the .NET 10 SDK, the .NET MAUI workloads and Docker.
+You need the .NET 11 SDK, the .NET MAUI workloads and Docker.
 
 Run these commands from the repository root. The first starts PostgreSQL for development, and the second starts the server, which applies database migrations in the `Development` environment:
 
@@ -42,7 +42,7 @@ dotnet run --project server/MinU.Server --urls http://0.0.0.0:5199
 Then start the app from Visual Studio, or from another terminal:
 
 ```powershell
-dotnet build 'Mi`nU.csproj' -t:Run -f net10.0-windows10.0.19041.0
+dotnet build 'Mi`nU.csproj' -t:Run -f net11.0-windows10.0.19041.0
 ```
 
 Keep the single quotes: in PowerShell, the backtick is an escape character.
@@ -100,7 +100,7 @@ Build:
 ```powershell
 $env:MINU_KEYSTORE = "D:\keys\minu.keystore"
 $env:MINU_KEYSTORE_PASSWORD = "the key's password"
-dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-android -p:MinuServerUrl=https://api.example.com -o publish/android
+dotnet publish 'Mi`nU.csproj' -c Release -f net11.0-android -p:MinuServerUrl=https://api.example.com -o publish/android
 ```
 
 The result is `publish/android/com.cyberpunk02.minu-Signed.apk`. The phone asks to allow installing from that source.
@@ -109,7 +109,7 @@ An app installed by a debug build is signed with a different key: uninstall it b
 ### Windows
 
 ```powershell
-dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-windows10.0.19041.0 -p:MinuServerUrl=https://api.example.com -o publish/windows
+dotnet publish 'Mi`nU.csproj' -c Release -f net11.0-windows10.0.19041.0 -p:MinuServerUrl=https://api.example.com -o publish/windows
 ```
 
 `publish/windows` holds everything, .NET and Windows App SDK included: zip it and hand it over, nothing needs installing

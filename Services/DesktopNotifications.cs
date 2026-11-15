@@ -53,8 +53,16 @@ namespace Mi_nU.Services
             // Before Register, so a tap on a notification shown earlier in this run still arrives.
             AppNotificationManager.Default.NotificationInvoked += (_, e) =>
                 MainThread.BeginInvokeOnMainThread(() => OnInvoked(e.Arguments));
-            AppNotificationManager.Default.Register();
-            _registered = true;
+            try
+            {
+                AppNotificationManager.Default.Register();
+                _registered = true;
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // A broken Windows App SDK runtime (see AddWindowsAppRuntimeInsightsResource in the project) costs the
+                // notifications, never the app: this runs while the app starts.
+            }
 #endif
         }
 

@@ -30,7 +30,7 @@
 
 ## Запуск
 
-Нужны .NET 10 SDK, рабочие нагрузки .NET MAUI и Docker.
+Нужны .NET 11 SDK, рабочие нагрузки .NET MAUI и Docker.
 
 Выполните команды из корня репозитория. Первая запускает PostgreSQL для разработки, а вторая — сервер, который в окружении `Development` сам применяет миграции базы:
 
@@ -42,7 +42,7 @@ dotnet run --project server/MinU.Server --urls http://0.0.0.0:5199
 Затем запустите приложение из Visual Studio или из другого терминала:
 
 ```powershell
-dotnet build 'Mi`nU.csproj' -t:Run -f net10.0-windows10.0.19041.0
+dotnet build 'Mi`nU.csproj' -t:Run -f net11.0-windows10.0.19041.0
 ```
 
 Одинарные кавычки обязательны: в PowerShell обратный апостроф служит символом экранирования.
@@ -100,7 +100,7 @@ keytool -genkeypair -v -keystore D:\keys\minu.keystore -alias minu -keyalg RSA -
 ```powershell
 $env:MINU_KEYSTORE = "D:\keys\minu.keystore"
 $env:MINU_KEYSTORE_PASSWORD = "пароль ключа"
-dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-android -p:MinuServerUrl=https://api.example.com -o publish/android
+dotnet publish 'Mi`nU.csproj' -c Release -f net11.0-android -p:MinuServerUrl=https://api.example.com -o publish/android
 ```
 
 Готовый файл — `publish/android/com.cyberpunk02.minu-Signed.apk`. При установке телефон попросит разрешить установку из
@@ -110,7 +110,7 @@ dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-android -p:MinuServerUrl=htt
 ### Windows
 
 ```powershell
-dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-windows10.0.19041.0 -p:MinuServerUrl=https://api.example.com -o publish/windows
+dotnet publish 'Mi`nU.csproj' -c Release -f net11.0-windows10.0.19041.0 -p:MinuServerUrl=https://api.example.com -o publish/windows
 ```
 
 В папке `publish/windows` всё нужное, включая .NET и Windows App SDK: её можно заархивировать и передать, на другом

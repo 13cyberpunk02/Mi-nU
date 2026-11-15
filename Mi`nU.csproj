@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFrameworks>net10.0-android</TargetFrameworks>
-		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+		<TargetFrameworks>net11.0-android</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net11.0-windows10.0.19041.0</TargetFrameworks>
 
 		<!-- libwebrtc for Android is only available for arm64 -->
 		<RuntimeIdentifier Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">android-arm64</RuntimeIdentifier>
@@ -102,9 +102,9 @@
 
 	<ItemGroup>
 		<PackageReference Include="13CyberPunk02.Maui.WebRTC" Version="0.1.0-preview.2" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.14" />
-		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.120" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.14" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="11.0.0" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="11.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="11.0.0" />
 	</ItemGroup>
 
 	<!-- Push through Firebase Cloud Messaging. google-services.json comes from the Firebase console and stays out of git;
@@ -120,5 +120,26 @@
 		<!-- MinuNoPush=true leaves it out, for a build under another package name, which Firebase doesn't know. -->
 		<GoogleServicesJson Include="Platforms\Android\google-services.json" Condition="Exists('Platforms\Android\google-services.json') And '$(MinuNoPush)' != 'true'" />
 	</ItemGroup>
+
+	<!-- Windows App SDK 2.5 bug (microsoft/WindowsAppSDK#6774): AppNotificationManager.Register() in an unpackaged app
+	     needs Microsoft.WindowsAppRuntime.Insights.Resource.dll beside it, which ships only inside the runtime's MSIX.
+	     Without it the app fails at startup. Referenced directly at the version MAUI brings, only to know its folder. -->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+		<PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.5.1" GeneratePathProperty="true" />
+	</ItemGroup>
+
+	<Target Name="AddWindowsAppRuntimeInsightsResource" BeforeTargets="AssignTargetPaths"
+	        Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+		<PropertyGroup>
+			<_InsightsName>Microsoft.WindowsAppRuntime.Insights.Resource.dll</_InsightsName>
+			<_InsightsMsix>$(PkgMicrosoft_WindowsAppSDK_Runtime)\tools\MSIX\win10-x64\Microsoft.WindowsAppRuntime.2.msix</_InsightsMsix>
+			<_InsightsDir>$(IntermediateOutputPath)wasdk-insights\</_InsightsDir>
+		</PropertyGroup>
+		<Error Condition="!Exists('$(_InsightsMsix)')" Text="Windows App SDK runtime MSIX not found at $(_InsightsMsix); check the Microsoft.WindowsAppSDK.Runtime version." />
+		<Unzip SourceFiles="$(_InsightsMsix)" DestinationFolder="$(_InsightsDir)" Include="$(_InsightsName)" Condition="!Exists('$(_InsightsDir)$(_InsightsName)')" />
+		<ItemGroup>
+			<None Include="$(_InsightsDir)$(_InsightsName)" Link="$(_InsightsName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		</ItemGroup>
+	</Target>
 
 </Project>
