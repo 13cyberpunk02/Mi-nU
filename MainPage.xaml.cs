@@ -4,17 +4,29 @@ using MinU.Contracts;
 
 namespace Mi_nU
 {
-    public record ChatRow(ChatDto Chat)
+    /// <summary><see cref="Viewer"/> is the signed-in user, whose own last message shows its ticks instead of a name.</summary>
+    public record ChatRow(ChatDto Chat, Guid Viewer = default)
     {
         public string Title => Chat.Title;
         public string Seed => Chat.Kind == ChatKind.Direct ? Chat.Title : Chat.Id.ToString();
         public string Preview => Chat.LastMessage switch
         {
             null => Chat.Kind == ChatKind.Group ? $"Участников: {Chat.Members.Count}" : "Сообщений пока нет",
+            var last when LastIsMine && Chat.Kind == ChatKind.Group => $"Вы: {last.Text}",
             var last when Chat.Kind == ChatKind.Group => $"{last.Sender.DisplayName}: {last.Text}",
             var last => last.Text,
         };
         public string Time => Chat.LastMessage is { } last ? Formatting.Time(last.SentAt) : "";
+
+        public bool HasUnread => Chat.UnreadCount > 0;
+        public string Unread => Chat.UnreadCount > 99 ? "99+" : Chat.UnreadCount.ToString();
+        public string UnreadDescription => $"Непрочитанных: {Chat.UnreadCount}";
+
+        bool LastIsMine => Viewer != default && Chat.LastMessage?.Sender.Id == Viewer;
+        bool LastRead => Chat.LastMessage is { } last && last.Id <= Chat.ReadUpTo;
+        public bool ShowReceipt => LastIsMine;
+        public string Receipt => LastRead ? Themes.Icons.CheckCheck : Themes.Icons.Check;
+        public bool ReceiptRead => LastRead;
     }
 
     public static class Formatting
@@ -43,10 +55,11 @@ namespace Mi_nU
         readonly ChatHubClient _hub;
         readonly PushNotifications _push;
         readonly DesktopNotifications _desktop;
+        readonly AppActivity _activity;
         readonly ObservableCollection<ChatRow> _chats = [];
         bool _pushRegistered;
 
-        public MainPage(AuthService auth, ChatApi api, ChatHubClient hub, PushNotifications push, DesktopNotifications desktop)
+        public MainPage(AuthService auth, ChatApi api, ChatHubClient hub, PushNotifications push, DesktopNotifications desktop, AppActivity activity)
         {
             InitializeComponent();
             _auth = auth;
@@ -54,6 +67,7 @@ namespace Mi_nU
             _hub = hub;
             _push = push;
             _desktop = desktop;
+            _activity = activity;
             ChatList.ItemsSource = _chats;
             SizeChanged += (_, _) => UpdateLayout();
             Current = this;
@@ -77,6 +91,7 @@ namespace Mi_nU
             _visible = true;
             _hub.MessageReceived += OnMessageReceived;
             _hub.ChatCreated += OnChatCreated;
+            _hub.ChatRead += OnChatRead;
             _hub.Connected += OnConnected;
             _hub.Start();
             if (_twoPane && Detail.ChatId is not null)
@@ -98,6 +113,7 @@ namespace Mi_nU
             _visible = false;
             _hub.MessageReceived -= OnMessageReceived;
             _hub.ChatCreated -= OnChatCreated;
+            _hub.ChatRead -= OnChatRead;
             _hub.Connected -= OnConnected;
             Detail.Deactivate();
         }
@@ -145,13 +161,23 @@ namespace Mi_nU
                 _desktop.Remember(chats);
                 ErrorLabel.IsVisible = false;
 
-                // Rebuilding an unchanged list would swallow a tap that lands in the middle of it.
-                static (Guid, long?) Key(ChatDto chat) => (chat.Id, chat.LastMessage?.Id);
-                if (!chats.Select(Key).SequenceEqual(_chats.Select(row => Key(row.Chat))))
+                // Rebuilding an unchanged list would swallow a tap that lands in the middle of it,
+                // so only a new order rebuilds it and changed counters replace just their rows.
+                static (Guid, long?) Order(ChatDto chat) => (chat.Id, chat.LastMessage?.Id);
+                static (int, long) Marks(ChatDto chat) => (chat.UnreadCount, chat.ReadUpTo);
+                if (!chats.Select(Order).SequenceEqual(_chats.Select(row => Order(row.Chat))))
                 {
                     _chats.Clear();
                     foreach (var chat in chats)
-                        _chats.Add(new ChatRow(chat));
+                        _chats.Add(Row(chat));
+                }
+                else
+                {
+                    for (var i = 0; i < chats.Count; i++)
+                    {
+                        if (Marks(chats[i]) != Marks(_chats[i].Chat))
+                            _chats[i] = Row(chats[i]);
+                    }
                 }
                 ApplySearch();
             }
@@ -168,9 +194,14 @@ namespace Mi_nU
         void OnChatCreated(ChatDto chat) => MainThread.BeginInvokeOnMainThread(() =>
         {
             if (_chats.All(row => row.Chat.Id != chat.Id))
-                _chats.Insert(0, new ChatRow(chat));
+                _chats.Insert(0, Row(chat));
             ApplySearch();
         });
+
+        ChatRow Row(ChatDto chat) => new(chat, _auth.Session?.User.Id ?? default);
+
+        /// <summary>The chat is open beside the list and the user is looking at it, so its messages are read as they come.</summary>
+        bool IsInView(Guid chatId) => _twoPane && _visible && _activity.IsActive && Detail.ChatId == chatId;
 
         void OnMessageReceived(MessageDto message) => MainThread.BeginInvokeOnMainThread(async () =>
         {
@@ -181,9 +212,46 @@ namespace Mi_nU
                 return;
             }
 
+            var chat = row.Chat with { LastMessage = message };
+            if (message.Sender.Id == _auth.Session?.User.Id)
+                // Writing in a chat, from here or another device, means having read it.
+                chat = chat with { UnreadCount = 0 };
+            else
+                // The sender has read everything before their message.
+                chat = chat with
+                {
+                    UnreadCount = IsInView(chat.Id) ? 0 : chat.UnreadCount + 1,
+                    ReadUpTo = Math.Max(chat.ReadUpTo, message.Id),
+                };
+
             _chats.Remove(row);
-            _chats.Insert(0, new ChatRow(row.Chat with { LastMessage = message }));
+            _chats.Insert(0, Row(chat));
             ApplySearch();
+        });
+
+        void OnChatRead(ReadReceipt receipt) => MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            var index = _chats.ToList().FindIndex(x => x.Chat.Id == receipt.ChatId);
+            if (index < 0)
+                return;
+
+            var chat = _chats[index].Chat;
+            if (receipt.UserId != _auth.Session?.User.Id)
+                chat = chat with { ReadUpTo = Math.Max(chat.ReadUpTo, receipt.MessageId) };
+            else if (receipt.MessageId >= (chat.LastMessage?.Id ?? 0))
+                chat = chat with { UnreadCount = 0 };
+            else
+            {
+                // Read only part of the chat: the server knows how much is left.
+                await ReloadAsync();
+                return;
+            }
+
+            if (chat != _chats[index].Chat)
+            {
+                _chats[index] = Row(chat);
+                ApplySearch();
+            }
         });
 
         void OnSearchChanged(object? sender, TextChangedEventArgs e) => ApplySearch();

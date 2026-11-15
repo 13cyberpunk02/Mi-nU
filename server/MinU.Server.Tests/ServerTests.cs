@@ -488,6 +488,57 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
     }
 
     [Fact]
+    public async Task Unread_counts_others_messages_until_read_and_tells_the_sender()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var chat = await alice.DirectChatWithAsync(bob);
+        await alice.SendAsync(chat.Id, "one");
+        await alice.SendAsync(chat.Id, "two");
+        var last = await alice.SendAsync(chat.Id, "three");
+
+        async Task<ChatDto> ChatOf(Client client) =>
+            (await client.Http.GetFromJsonAsync<List<ChatDto>>("/api/chats"))!.Single(x => x.Id == chat.Id);
+
+        Assert.Equal(3, (await ChatOf(bob)).UnreadCount);
+        Assert.Equal(0, (await ChatOf(alice)).UnreadCount);
+        Assert.Equal(0, (await ChatOf(alice)).ReadUpTo);
+
+        var aliceSaw = alice.Next<ReadReceipt>("ChatRead");
+        var bobSaw = bob.Next<ReadReceipt>("ChatRead");
+        // An id past the end is clamped to the newest message.
+        await bob.Hub.InvokeAsync("MarkRead", chat.Id, last.Id + 1000);
+        Assert.Equal(new ReadReceipt(chat.Id, bob.User.Id, last.Id), await aliceSaw);
+        Assert.Equal(last.Id, (await bobSaw).MessageId);
+
+        Assert.Equal(0, (await ChatOf(bob)).UnreadCount);
+        Assert.Equal(last.Id, (await ChatOf(alice)).ReadUpTo);
+
+        // The mark never moves back.
+        await bob.Hub.InvokeAsync("MarkRead", chat.Id, last.Id - 1);
+        Assert.Equal(last.Id, (await ChatOf(alice)).ReadUpTo);
+
+        // Replying means having read the chat, and one's own message is never unread.
+        await alice.SendAsync(chat.Id, "four");
+        var reply = await bob.SendAsync(chat.Id, "reply");
+        Assert.Equal(0, (await ChatOf(bob)).UnreadCount);
+        Assert.Equal(1, (await ChatOf(alice)).UnreadCount);
+        Assert.Equal(reply.Id, (await ChatOf(alice)).ReadUpTo);
+    }
+
+    [Fact]
+    public async Task Outsiders_cannot_mark_a_chat_read()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var mallory = await server.RegisterAsync("mallory");
+        var chat = await alice.DirectChatWithAsync(bob);
+        var sent = await alice.SendAsync(chat.Id, "hi");
+
+        await Assert.ThrowsAsync<HubException>(() => mallory.Hub.InvokeAsync("MarkRead", chat.Id, sent.Id));
+    }
+
+    [Fact]
     public async Task Call_rings_connects_relays_signals_and_ends()
     {
         var alice = await server.RegisterAsync("alice");

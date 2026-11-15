@@ -29,6 +29,8 @@ public class ChatMember
     public Guid ChatId { get; set; }
     public Guid UserId { get; set; }
     public User User { get; set; } = null!;
+    /// <summary>The newest message this member has seen; later messages from others are unread.</summary>
+    public long LastReadMessageId { get; set; }
 }
 
 public class Message

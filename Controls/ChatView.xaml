@@ -17,7 +17,18 @@
                         BackgroundColor="{DynamicResource BubbleMine}" MaximumWidthRequest="520">
                     <VerticalStackLayout Spacing="2">
                         <Label Text="{Binding Text}" LineHeight="1.25" />
-                        <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource BubbleMineMuted}" HorizontalOptions="End" />
+                        <HorizontalStackLayout HorizontalOptions="End" Spacing="4">
+                            <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource BubbleMineMuted}" VerticalTextAlignment="Center" />
+                            <Label Text="{Binding Receipt}" IsVisible="{Binding ShowReceipt}" FontFamily="Icons" FontSize="14"
+                                   TextColor="{DynamicResource BubbleMineMuted}" VerticalTextAlignment="Center"
+                                   SemanticProperties.Description="{Binding ReceiptDescription}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding Read}" Value="True">
+                                        <Setter Property="TextColor" Value="{DynamicResource AccentText}" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </HorizontalStackLayout>
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>

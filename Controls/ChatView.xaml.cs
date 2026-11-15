@@ -13,7 +13,12 @@ namespace Mi_nU.Controls
         public bool ShowDay { get; init; } = true;
         /// <summary>Follows a message from the same person, so it sits closer and repeats no name.</summary>
         public bool Continues { get; init; }
+        /// <summary>Someone else in the chat has seen this message; only kept for one's own messages.</summary>
+        public bool Read { get; init; }
 
+        public bool ShowReceipt => IsMine && State == MessageState.Sent;
+        public string Receipt => Read ? Themes.Icons.CheckCheck : Themes.Icons.Check;
+        public string ReceiptDescription => Read ? "Прочитано" : "Отправлено";
         public string Day => Formatting.Day(SentAt);
         public bool ShowSenderName => ShowSender && !Continues;
         public Thickness Spacing => Continues ? new Thickness(0, 2, 0, 0) : new Thickness(0, 8, 0, 0);
@@ -55,9 +60,14 @@ namespace Mi_nU.Controls
         readonly ChatApi _api;
         readonly ChatHubClient _hub;
         readonly CallService _calls;
+        readonly AppActivity _activity;
         readonly ObservableCollection<MessageRow> _rows = [];
         ChatDto? _chat;
         bool _active;
+        /// <summary>The newest message someone else has read: one's own messages up to it get two ticks.</summary>
+        long _readUpTo;
+        /// <summary>The newest message this view has reported as seen, so it isn't reported twice.</summary>
+        long _markedUpTo;
 
         public ChatView()
         {
@@ -68,6 +78,7 @@ namespace Mi_nU.Controls
             _api = services.GetRequiredService<ChatApi>();
             _hub = services.GetRequiredService<ChatHubClient>();
             _calls = services.GetRequiredService<CallService>();
+            _activity = services.GetRequiredService<AppActivity>();
             Messages.ItemsSource = _rows;
             MessageEntry.MaxLength = Limits.MessageMax;
         }
@@ -89,6 +100,8 @@ namespace Mi_nU.Controls
                 return;
 
             _chat = chat;
+            _readUpTo = chat.ReadUpTo;
+            _markedUpTo = 0;
             _rows.Clear();
             MessageEntry.Text = "";
             OlderButton.IsVisible = ErrorLabel.IsVisible = false;
@@ -108,7 +121,9 @@ namespace Mi_nU.Controls
 
             _active = true;
             _hub.MessageReceived += OnMessageReceived;
+            _hub.ChatRead += OnChatRead;
             _hub.Connected += OnConnected;
+            _activity.Changed += MarkSeen;
             _ = LoadLatestAsync();
         }
 
@@ -119,7 +134,48 @@ namespace Mi_nU.Controls
 
             _active = false;
             _hub.MessageReceived -= OnMessageReceived;
+            _hub.ChatRead -= OnChatRead;
             _hub.Connected -= OnConnected;
+            _activity.Changed -= MarkSeen;
+        }
+
+        /// <summary>
+        /// Tells the server the user has seen everything loaded, but only while the chat is really in view:
+        /// a message that arrives behind another window or with the phone in a pocket stays unread.
+        /// </summary>
+        void MarkSeen()
+        {
+            if (!_active || !_activity.IsActive || _chat is not { } chat)
+                return;
+
+            var newest = _rows.Select(row => row.Id ?? 0).DefaultIfEmpty().Max();
+            if (newest <= _markedUpTo)
+                return;
+
+            _markedUpTo = newest;
+            _ = _hub.MarkReadAsync(chat.Id, newest);
+#if ANDROID
+            Droid.PushNotifier.CancelChat(Platform.AppContext, chat.Id);
+#endif
+        }
+
+        void OnChatRead(ReadReceipt receipt) => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (receipt.ChatId == _chat?.Id && receipt.UserId != _auth.Session?.User.Id)
+                AdvanceReadUpTo(receipt.MessageId);
+        });
+
+        void AdvanceReadUpTo(long messageId)
+        {
+            if (messageId <= _readUpTo)
+                return;
+
+            _readUpTo = messageId;
+            for (var i = 0; i < _rows.Count; i++)
+            {
+                if (_rows[i] is { IsMine: true, Read: false, Id: { } id } row && id <= messageId)
+                    _rows[i] = row with { Read = true };
+            }
         }
 
         async Task LoadLatestAsync()
@@ -140,6 +196,9 @@ namespace Mi_nU.Controls
                     OlderButton.IsVisible = page.Count == PageSize;
                 ErrorLabel.IsVisible = false;
                 ScrollToEnd();
+                if (page.LastOrDefault(message => message.Sender.Id != _auth.Session?.User.Id) is { } reply)
+                    AdvanceReadUpTo(reply.Id);
+                MarkSeen();
             }
             catch (ApiException error)
             {
@@ -199,6 +258,10 @@ namespace Mi_nU.Controls
 
             Merge(message);
             ScrollToEnd();
+            // Whoever replies has read everything before their reply.
+            if (message.Sender.Id != _auth.Session?.User.Id)
+                AdvanceReadUpTo(message.Id);
+            MarkSeen();
         });
 
         async void OnSendClicked(object? sender, EventArgs e)
@@ -296,7 +359,10 @@ namespace Mi_nU.Controls
         {
             var mine = message.Sender.Id == _auth.Session?.User.Id;
             return new MessageRow(message.Id, message.ClientMessageId, message.Text, message.Sender.DisplayName,
-                _chat?.Kind == ChatKind.Group && !mine, mine, message.SentAt, MessageState.Sent);
+                _chat?.Kind == ChatKind.Group && !mine, mine, message.SentAt, MessageState.Sent)
+            {
+                Read = mine && message.Id <= _readUpTo,
+            };
         }
 
         void Replace(MessageRow row, MessageRow replacement)

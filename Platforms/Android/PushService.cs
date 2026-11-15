@@ -119,8 +119,15 @@ namespace Mi_nU.Droid
                 case PushKeys.TypeCallEnded when Guid.TryParse(data.GetValueOrDefault(PushKeys.CallId), out var callId):
                     NotificationManagerCompat.From(context)!.Cancel(CallNotificationId(callId));
                     break;
+                case PushKeys.TypeChatRead when Guid.TryParse(data.GetValueOrDefault(PushKeys.ChatId), out var chatId):
+                    CancelChat(context, chatId);
+                    break;
             }
         }
+
+        /// <summary>Removes the chat's message notification once it has been read, here or on another device.</summary>
+        public static void CancelChat(Context context, Guid chatId) =>
+            NotificationManagerCompat.From(context)!.Cancel(chatId.GetHashCode());
 
         /// <summary>Turns a tap on a notification into an action for the app; called by MainActivity.</summary>
         public static void HandleIntent(Context context, Intent? intent)

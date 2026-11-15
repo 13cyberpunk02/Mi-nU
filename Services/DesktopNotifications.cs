@@ -17,22 +17,24 @@ namespace Mi_nU.Services
 
         readonly AuthService _auth;
         readonly CallService _calls;
+        readonly AppActivity _activity;
         readonly Dictionary<Guid, ChatDto> _chats = [];
         Guid? _ringing;
         bool _registered;
 
-        public DesktopNotifications(AuthService auth, ChatHubClient hub, CallService calls)
+        public DesktopNotifications(AuthService auth, ChatHubClient hub, CallService calls, AppActivity activity)
         {
             _auth = auth;
             _calls = calls;
+            _activity = activity;
             hub.MessageReceived += message => MainThread.BeginInvokeOnMainThread(() => OnMessage(message));
             hub.ChatCreated += chat => MainThread.BeginInvokeOnMainThread(() => _chats[chat.Id] = chat);
+            hub.ChatRead += receipt => MainThread.BeginInvokeOnMainThread(() => OnChatRead(receipt));
             calls.IncomingCall += OnIncomingCall;
             calls.Finished += _ => StopRinging();
         }
 
-        /// <summary>Whether the app's window is in front; set from its Activated and Deactivated events.</summary>
-        public bool WindowActive { get; set; } = true;
+        bool WindowActive => _activity.IsActive;
 
         /// <summary>Chat names for message notifications; the chat list hands them over when it loads.</summary>
         public void Remember(IEnumerable<ChatDto> chats)
@@ -84,6 +86,16 @@ namespace Mi_nU.Services
             AppNotificationManager.Default.Show(notification);
 #else
             _ = group;
+#endif
+        }
+
+        // Read here or on the phone: the chat's notification has nothing new to say any more.
+        void OnChatRead(ReadReceipt receipt)
+        {
+            if (receipt.UserId != _auth.Session?.User.Id || !_registered)
+                return;
+#if WINDOWS
+            _ = AppNotificationManager.Default.RemoveByTagAsync(receipt.ChatId.ToString());
 #endif
         }
 

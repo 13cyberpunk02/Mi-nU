@@ -32,6 +32,7 @@ namespace Mi_nU
             });
 
             builder.Services.AddSingleton<AppShell>();
+            builder.Services.AddSingleton<Services.AppActivity>();
             builder.Services.AddSingleton<Services.AuthService>();
             builder.Services.AddSingleton<Services.ChatApi>();
             builder.Services.AddSingleton<Services.ChatHubClient>();

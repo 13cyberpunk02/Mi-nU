@@ -35,9 +35,18 @@ public class ChatService(AppDbContext db)
             .Include(message => message.Sender)
             .AsNoTracking()
             .ToDictionaryAsync(message => message.ChatId);
+        var unread = await db.Messages
+            .Where(message => message.SenderId != userId)
+            .Join(db.ChatMembers.Where(member => member.UserId == userId),
+                message => message.ChatId, member => member.ChatId,
+                (message, member) => new { message.ChatId, message.Id, member.LastReadMessageId })
+            .Where(x => x.Id > x.LastReadMessageId)
+            .GroupBy(x => x.ChatId)
+            .Select(group => new { ChatId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(x => x.ChatId, x => x.Count);
 
         return chats
-            .Select(chat => ToDto(chat, userId, last.GetValueOrDefault(chat.Id)))
+            .Select(chat => ToDto(chat, userId, last.GetValueOrDefault(chat.Id), unread.GetValueOrDefault(chat.Id)))
             .OrderByDescending(chat => chat.LastMessage?.Id ?? 0)
             .ToList();
     }
@@ -125,16 +134,36 @@ public class ChatService(AppDbContext db)
         }
 
         await db.Entry(message).Reference(x => x.Sender).LoadAsync();
+        // Whoever writes has seen the chat up to their own message.
+        await AdvanceReadAsync(chatId, senderId, message.Id);
         return (ToDto(message), true);
     }
 
-    public static ChatDto ToDto(Chat chat, Guid viewerId, Message? last)
+    /// <summary>
+    /// Moves the member's read mark forward to <paramref name="messageId"/>, never past the chat's newest message.
+    /// Null when nothing changed: the mark was already there, or the chat is empty.
+    /// </summary>
+    public async Task<long?> MarkReadAsync(Guid chatId, Guid userId, long messageId)
+    {
+        var newest = await db.Messages.Where(message => message.ChatId == chatId).MaxAsync(message => (long?)message.Id) ?? 0;
+        var upTo = Math.Min(messageId, newest);
+        return upTo > 0 && await AdvanceReadAsync(chatId, userId, upTo) ? upTo : null;
+    }
+
+    // A single conditional update, so two devices reading at once can't move the mark backwards.
+    async Task<bool> AdvanceReadAsync(Guid chatId, Guid userId, long messageId) =>
+        await db.ChatMembers
+            .Where(member => member.ChatId == chatId && member.UserId == userId && member.LastReadMessageId < messageId)
+            .ExecuteUpdateAsync(set => set.SetProperty(member => member.LastReadMessageId, messageId)) > 0;
+
+    public static ChatDto ToDto(Chat chat, Guid viewerId, Message? last, int unread = 0)
     {
         var members = chat.Members.Select(member => ToDto(member.User)).ToList();
         var title = chat.Kind == ChatKind.Direct
             ? members.FirstOrDefault(member => member.Id != viewerId)?.DisplayName ?? ""
             : chat.Title ?? "";
-        return new ChatDto(chat.Id, chat.Kind, title, members, last is null ? null : ToDto(last));
+        var readUpTo = chat.Members.Where(member => member.UserId != viewerId).Select(member => member.LastReadMessageId).DefaultIfEmpty().Max();
+        return new ChatDto(chat.Id, chat.Kind, title, members, last is null ? null : ToDto(last), unread, readUpTo);
     }
 
     public static UserDto ToDto(User user) => new(user.Id, user.UserName, user.DisplayName);

@@ -20,6 +20,7 @@ namespace Mi_nU.Services
 
         public event Action<MessageDto>? MessageReceived;
         public event Action<ChatDto>? ChatCreated;
+        public event Action<ReadReceipt>? ChatRead;
         /// <summary>Connected or reconnected: anything sent while offline has to be fetched again.</summary>
         public event Action? Connected;
         public event Action<CallInvite>? CallInvited;
@@ -44,6 +45,7 @@ namespace Mi_nU.Services
 
             hub.On<MessageDto>(nameof(IChatClient.MessageReceived), message => MessageReceived?.Invoke(message));
             hub.On<ChatDto>(nameof(IChatClient.ChatCreated), chat => ChatCreated?.Invoke(chat));
+            hub.On<ReadReceipt>(nameof(IChatClient.ChatRead), receipt => ChatRead?.Invoke(receipt));
             hub.On<CallInvite>(nameof(IChatClient.CallInvited), invite => CallInvited?.Invoke(invite));
             hub.On<CallParticipant>(nameof(IChatClient.CallParticipantJoined), participant => CallParticipantJoined?.Invoke(participant));
             hub.On<CallParticipant>(nameof(IChatClient.CallParticipantLeft), participant => CallParticipantLeft?.Invoke(participant));
@@ -66,6 +68,24 @@ namespace Mi_nU.Services
             // Right after signing in the connection is still being set up; a message typed that fast shouldn't fail.
             await WaitConnectedAsync(TimeSpan.FromSeconds(10));
             return await Connection().InvokeAsync<MessageDto>("SendMessage", chatId, text, clientMessageId);
+        }
+
+        /// <summary>
+        /// Best effort: offline it is simply skipped, and the chat is marked again once the connection is back,
+        /// because the open chat reloads on <see cref="Connected"/>.
+        /// </summary>
+        public async Task MarkReadAsync(Guid chatId, long messageId)
+        {
+            if (_hub is not { State: HubConnectionState.Connected } hub)
+                return;
+            try
+            {
+                await hub.InvokeAsync("MarkRead", chatId, messageId);
+            }
+            catch (Exception)
+            {
+                // Lost the connection on the way; see above.
+            }
         }
 
         public Task<CallJoinResult> StartCallAsync(Guid chatId, bool video) =>

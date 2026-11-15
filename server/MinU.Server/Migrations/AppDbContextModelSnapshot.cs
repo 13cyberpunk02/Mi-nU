@@ -57,6 +57,9 @@ namespace MinU.Server.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
+                    b.Property<long>("LastReadMessageId")
+                        .HasColumnType("bigint");
+
                     b.HasKey("ChatId", "UserId");
 
                     b.HasIndex("UserId");

@@ -15,8 +15,16 @@ public record UserDto(Guid Id, string UserName, string DisplayName);
 public record CreateDirectChatRequest(Guid UserId);
 public record CreateGroupChatRequest(string Title, IReadOnlyList<Guid> MemberIds);
 
-/// <summary>For a direct chat, <see cref="Title"/> is the other person's name.</summary>
-public record ChatDto(Guid Id, ChatKind Kind, string Title, IReadOnlyList<UserDto> Members, MessageDto? LastMessage);
+/// <summary>
+/// For a direct chat, <see cref="Title"/> is the other person's name.
+/// <see cref="UnreadCount"/> counts the others' messages the viewer hasn't read yet;
+/// <see cref="ReadUpTo"/> is the newest message someone else has read, so the viewer's own messages up to it show as read.
+/// </summary>
+public record ChatDto(Guid Id, ChatKind Kind, string Title, IReadOnlyList<UserDto> Members, MessageDto? LastMessage,
+    int UnreadCount = 0, long ReadUpTo = 0);
+
+/// <summary><see cref="UserId"/> has read <see cref="ChatId"/> up to and including message <see cref="MessageId"/>.</summary>
+public record ReadReceipt(Guid ChatId, Guid UserId, long MessageId);
 
 /// <summary><see cref="Id"/> grows within the server, so it orders messages and pages history.</summary>
 public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, DateTimeOffset SentAt, Guid ClientMessageId);
@@ -40,6 +48,7 @@ public static class PushKeys
     public const string TypeMessage = "message";
     public const string TypeCall = "call";
     public const string TypeCallEnded = "call_ended";
+    public const string TypeChatRead = "chat_read";
 
     public const string ChatId = "chatId";
     public const string ChatTitle = "chatTitle";
@@ -81,6 +90,8 @@ public static class CallLimits
 public interface IChatClient
 {
     Task MessageReceived(MessageDto message);
+    /// <summary>Goes to every member, so the reader's other devices clear the chat's unread count too.</summary>
+    Task ChatRead(ReadReceipt receipt);
     Task ChatCreated(ChatDto chat);
     Task CallInvited(CallInvite invite);
     Task CallParticipantJoined(CallParticipant participant);

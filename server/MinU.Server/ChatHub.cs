@@ -28,6 +28,16 @@ public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db, Pus
         return message;
     }
 
+    /// <summary>The user has seen the chat up to <paramref name="messageId"/>; the app calls this while the chat is on screen.</summary>
+    public async Task MarkRead(Guid chatId, long messageId)
+    {
+        await RequireMemberAsync(chatId);
+        if (await chats.MarkReadAsync(chatId, UserId, messageId) is not { } upTo)
+            return;
+        await Clients.Users(await MemberKeysAsync(chatId)).ChatRead(new ReadReceipt(chatId, UserId, upTo));
+        push.ChatRead(UserId, chatId);
+    }
+
     /// <summary>Joins the chat's running call if there is one; otherwise starts a call and rings the other members.</summary>
     public async Task<CallJoinResult> StartCall(Guid chatId, bool video)
     {

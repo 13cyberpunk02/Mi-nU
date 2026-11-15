@@ -53,6 +53,8 @@ namespace Mi_nU.Themes
         public const string Search = "";
         public const string Users = "";
         public const string Check = "";
+        /// <summary>Two ticks: a message someone has read.</summary>
+        public const string CheckCheck = "\uE392";
         public const string Close = "";
         public const string LogOut = "";
     }

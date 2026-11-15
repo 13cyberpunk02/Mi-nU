@@ -97,6 +97,14 @@ public class PushQueue
             [PushKeys.CallId] = callId.ToString(),
         });
 
+    /// <summary>The chat was read on one device: its notification goes away on the reader's other phones.</summary>
+    public void ChatRead(Guid reader, Guid chatId) =>
+        Enqueue([reader], TimeSpan.FromDays(1), new()
+        {
+            [PushKeys.Type] = PushKeys.TypeChatRead,
+            [PushKeys.ChatId] = chatId.ToString(),
+        });
+
     void Enqueue(IEnumerable<Guid> recipients, TimeSpan timeToLive, Dictionary<string, string> data)
     {
         var list = recipients.ToList();
