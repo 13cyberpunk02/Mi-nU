@@ -67,6 +67,8 @@
                 <HorizontalStackLayout Spacing="20">
                     <Button x:Name="MuteButton" AutomationId="CallMute" Style="{StaticResource CallButton}" Clicked="OnMuteClicked" />
                     <Button x:Name="CameraButton" AutomationId="CallCamera" Style="{StaticResource CallButton}" Clicked="OnCameraClicked" />
+                    <Button x:Name="SwitchCameraButton" AutomationId="CallSwitchCamera" Text="{x:Static themes:Icons.SwitchCamera}" Style="{StaticResource CallButton}"
+                            SemanticProperties.Description="Переключить камеру" IsVisible="False" Clicked="OnSwitchCameraClicked" />
                     <Button x:Name="HangUpButton" AutomationId="CallHangUp" Text="{x:Static themes:Icons.PhoneOff}" Style="{StaticResource HangUpButton}"
                             SemanticProperties.Description="Завершить звонок" Clicked="OnHangUpClicked" />
                 </HorizontalStackLayout>

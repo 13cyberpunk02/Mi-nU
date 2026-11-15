@@ -136,6 +136,26 @@ namespace Mi_nU.Services
             Changed?.Invoke();
         }
 
+        /// <summary>A real camera is on and there is another one: front and back on a phone, a second webcam on a computer.</summary>
+        public bool CanSwitchCamera => _camera is not null && CameraCapturer.CanSwitch;
+
+        /// <summary>Moves to the other camera. The video track stays the same, so the call isn't renegotiated.</summary>
+        public async Task SwitchCameraAsync()
+        {
+            if (_camera is not { } camera)
+                return;
+            try
+            {
+                // Opening a camera can take a moment on Windows; the call screen shouldn't freeze meanwhile.
+                await Task.Run(camera.Switch);
+            }
+            catch (Exception e) when (e is WebRtcException or InvalidOperationException or ObjectDisposedException)
+            {
+                // The camera went away (the call ended, or it was unplugged): nothing to switch to.
+            }
+            Changed?.Invoke();
+        }
+
 #if DEBUG
         public async Task<string> DebugStatsAsync()
         {

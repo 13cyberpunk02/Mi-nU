@@ -106,6 +106,8 @@ namespace Mi_nU.Pages
             CameraButton.Text = _calls.IsCameraOff ? Icons.VideoOff : Icons.Video;
             CameraButton.Style = StyleNamed(_calls.IsCameraOff ? "CallButtonOff" : "CallButton");
             SemanticProperties.SetDescription(CameraButton, _calls.IsCameraOff ? "Включить камеру" : "Выключить камеру");
+            // With the camera off there is nothing to switch.
+            SwitchCameraButton.IsVisible = _calls.CanSwitchCamera && !_calls.IsCameraOff;
             UpdateStatus();
         }
 
@@ -198,6 +200,13 @@ namespace Mi_nU.Pages
         void OnMuteClicked(object? sender, EventArgs e) => _calls.SetMuted(!_calls.IsMuted);
 
         void OnCameraClicked(object? sender, EventArgs e) => _calls.SetCameraOff(!_calls.IsCameraOff);
+
+        async void OnSwitchCameraClicked(object? sender, EventArgs e)
+        {
+            SwitchCameraButton.IsEnabled = false;
+            await _calls.SwitchCameraAsync();
+            SwitchCameraButton.IsEnabled = true;
+        }
 
         // AppShell leaves this page when the call finishes.
         async void OnHangUpClicked(object? sender, EventArgs e) => await _calls.HangUpAsync();
