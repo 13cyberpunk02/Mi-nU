@@ -75,14 +75,57 @@ dotnet build 'Mi`nU.csproj' -t:Run -f net10.0-windows10.0.19041.0
 dotnet test server/MinU.Server.Tests
 ```
 
+## Сервер
+
+Развёртывание сервера с PostgreSQL, HTTPS, TURN и push-уведомлениями описано в [`server/deploy/README.ru.md`](server/deploy/README.ru.md).
+
+## Сборка для выпуска
+
+В релизной сборке нет поля адреса сервера: адрес задаётся при сборке. Без него сборка остановится с ошибкой.
+
+### Android
+
+APK подписывается вашим ключом. Создайте его один раз:
+
+```powershell
+keytool -genkeypair -v -keystore D:\keys\minu.keystore -alias minu -keyalg RSA -keysize 4096 -validity 10000
+```
+
+`keytool` входит в JDK, например `C:\Program Files\Microsoft\jdk-…\bin\keytool.exe`. Храните ключ и пароль вне
+репозитория и сделайте их резервную копию: обновление можно поставить только поверх приложения, подписанного тем же
+ключом, а потерянный ключ не восстановить.
+
+Сборка:
+
+```powershell
+$env:MINU_KEYSTORE = "D:\keys\minu.keystore"
+$env:MINU_KEYSTORE_PASSWORD = "пароль ключа"
+dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-android -p:MinuServerUrl=https://api.example.com -o publish/android
+```
+
+Готовый файл — `publish/android/com.cyberpunk02.minu-Signed.apk`. При установке телефон попросит разрешить установку из
+этого источника. Приложение, установленное отладочной сборкой, подписано другим ключом: перед первой установкой релиза его
+нужно удалить.
+
+### Windows
+
+```powershell
+dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-windows10.0.19041.0 -p:MinuServerUrl=https://api.example.com -o publish/windows
+```
+
+В папке `publish/windows` всё нужное, включая .NET и Windows App SDK: её можно заархивировать и передать, на другом
+компьютере ничего устанавливать не нужно. Запускается `MinU.exe`. Уведомления не работают, если запустить программу от
+имени администратора.
+
+### Проверка релизной сборки с локальным сервером
+
+`-p:MinuAllowCleartext=true` разрешает обычный HTTP, чтобы проверить релиз против сервера на своём компьютере. Такую сборку
+никому не передавайте.
+
 ## Перед развёртыванием
 
-Сервер и приложение в текущем виде не готовы к работе в продакшене:
-
-- Задайте в `Jwt:Key` свой секрет не короче 32 символов, а в `ConnectionStrings:Default` — свою базу. Не используйте значения из `appsettings.Development.json`.
-- Задайте `Database:MigrateOnStartup` в `true` или применяйте миграции сами: вне `Development` по умолчанию они не запускаются.
-- Используйте HTTPS и укажите адрес сервера в `AuthService`: в релизной сборке нет поля адреса, а Android 9 и новее блокирует в ней обычный HTTP.
 - Запускайте только один экземпляр сервера: текущие звонки хранятся в памяти.
+- Push-уведомления есть только на Android. На Windows уведомления приходят, пока программа запущена.
 
 ## Лицензия
 

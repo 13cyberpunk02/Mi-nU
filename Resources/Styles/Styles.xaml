@@ -15,6 +15,7 @@
     <Color x:Key="CallText">#ECEFF2</Color>
     <Color x:Key="CallMuted">#A3ACB6</Color>
     <Color x:Key="CallAccent">#4CC3B5</Color>
+    <Color x:Key="CallWarning">#F2C46B</Color>
     <Color x:Key="Danger">#C6372E</Color>
     <Color x:Key="Success">#1F8A53</Color>
     <Color x:Key="OnStatus">#FFFFFF</Color>

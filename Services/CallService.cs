@@ -61,6 +61,8 @@ namespace Mi_nU.Services
         public string Title { get; private set; } = "";
         public bool IsMuted => _audio is { Enabled: false };
         public bool IsCameraOff => LocalVideo is { Enabled: false };
+        /// <summary>False when the server gave no TURN server: the call then connects only within one network.</summary>
+        public bool HasRelay => _iceServers.Any(server => server.Url.StartsWith("turn", StringComparison.OrdinalIgnoreCase));
 
         public event Action? Changed;
         public event Action? IncomingCall;
@@ -204,7 +206,7 @@ namespace Mi_nU.Services
             // Lets the app be tested on a computer without using its real camera.
             var testPattern = Environment.GetEnvironmentVariable("MINU_TEST_PATTERN") == "1";
 #else
-            const bool testPattern = false;
+            var testPattern = false;
 #endif
             if (video && (testPattern || (cameraAllowed && CameraCapturer.DeviceCount > 0)))
             {

@@ -133,6 +133,41 @@ namespace MinU.Server.Migrations
                     b.ToTable("Messages");
                 });
 
+            modelBuilder.Entity("MinU.Server.RefreshToken", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<bool>("Replaced")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Hash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RefreshTokens");
+                });
+
             modelBuilder.Entity("MinU.Server.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -204,6 +239,15 @@ namespace MinU.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("MinU.Server.RefreshToken", b =>
+                {
+                    b.HasOne("MinU.Server.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MinU.Server.Chat", b =>

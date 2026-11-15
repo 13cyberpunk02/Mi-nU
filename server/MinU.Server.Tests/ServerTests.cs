@@ -174,6 +174,69 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         Assert.Equal(HttpStatusCode.Unauthorized, unknown.StatusCode);
     }
 
+    async Task<AuthResponse> LoginAsync(Client client)
+    {
+        var response = await server.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest(client.User.UserName, "correct-password"));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<AuthResponse>())!;
+    }
+
+    async Task<HttpResponseMessage> RefreshAsync(string refreshToken) =>
+        await server.CreateClient().PostAsJsonAsync("/api/auth/refresh", new RefreshRequest(refreshToken));
+
+    [Fact]
+    public async Task Access_token_is_short_lived_and_refresh_token_long_lived()
+    {
+        var auth = await LoginAsync(await server.RegisterAsync("alice"));
+        Assert.InRange(auth.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(55), DateTimeOffset.UtcNow.AddMinutes(65));
+        Assert.InRange(auth.RefreshExpiresAt, DateTimeOffset.UtcNow.AddDays(59), DateTimeOffset.UtcNow.AddDays(61));
+    }
+
+    [Fact]
+    public async Task Refresh_gives_a_working_pair_and_each_refresh_token_works_once()
+    {
+        var first = await LoginAsync(await server.RegisterAsync("alice"));
+
+        var response = await RefreshAsync(first.RefreshToken);
+        response.EnsureSuccessStatusCode();
+        var second = (await response.Content.ReadFromJsonAsync<AuthResponse>())!;
+        Assert.NotEqual(first.RefreshToken, second.RefreshToken);
+
+        var http = server.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", second.Token);
+        Assert.Equal(HttpStatusCode.OK, (await http.GetAsync("/api/chats")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await RefreshAsync(second.RefreshToken)).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_copied_refresh_token_used_again_ends_every_sign_in()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var stolen = await LoginAsync(alice);
+        var otherDevice = await LoginAsync(alice);
+        var owner = (await (await RefreshAsync(stolen.RefreshToken)).Content.ReadFromJsonAsync<AuthResponse>())!;
+
+        // The thief tries the token the owner has already swapped.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RefreshAsync(stolen.RefreshToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RefreshAsync(owner.RefreshToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RefreshAsync(otherDevice.RefreshToken)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Sign_out_ends_only_that_device()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var phone = await LoginAsync(alice);
+        var computer = await LoginAsync(alice);
+
+        (await server.CreateClient().PostAsJsonAsync("/api/auth/logout", new RefreshRequest(phone.RefreshToken))).EnsureSuccessStatusCode();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RefreshAsync(phone.RefreshToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await RefreshAsync(computer.RefreshToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RefreshAsync("made-up-token")).StatusCode);
+    }
+
     [Fact]
     public async Task Username_must_be_unique_ignoring_case()
     {

@@ -16,6 +16,8 @@
         <VerticalStackLayout HorizontalOptions="Center" Spacing="2">
             <Label x:Name="TitleLabel" FontFamily="InterSemiBold" FontSize="20" TextColor="{StaticResource CallText}" HorizontalTextAlignment="Center" />
             <Label x:Name="StatusLabel" AutomationId="CallStatus" Style="{StaticResource CallLabel}" HorizontalTextAlignment="Center" />
+            <Label x:Name="RelayWarning" AutomationId="CallRelayWarning" IsVisible="False" HorizontalTextAlignment="Center" FontSize="13" Margin="0,6,0,0"
+                   TextColor="{StaticResource CallWarning}" Text="Нет сервера TURN: звонок соединится, только если вы в одной сети" />
         </VerticalStackLayout>
 
         <Grid Grid.Row="1">

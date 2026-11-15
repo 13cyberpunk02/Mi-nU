@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
@@ -44,7 +45,7 @@ public static partial class Endpoints
             {
                 return Results.Conflict(new { error = "This username is taken." });
             }
-            return Results.Ok(IssueToken(user, config));
+            return Results.Ok(await IssueTokensAsync(user, db, config));
         });
 
         auth.MapPost("/login", async (LoginRequest request, AppDbContext db, IPasswordHasher<User> hasher, IConfiguration config) =>
@@ -60,7 +61,20 @@ public static partial class Endpoints
                 user.PasswordHash = hasher.HashPassword(user, request.Password!);
                 await db.SaveChangesAsync();
             }
-            return Results.Ok(IssueToken(user, config));
+            return Results.Ok(await IssueTokensAsync(user, db, config));
+        });
+
+        // Outside the sign-in rate limit: a refresh token is 256 random bits, and many devices may refresh at once behind one address.
+        app.MapPost("/api/auth/refresh", async (RefreshRequest request, AppDbContext db, IConfiguration config) =>
+            await RefreshAsync(request.RefreshToken, db, config) is { } tokens ? Results.Ok(tokens) : Results.Unauthorized());
+
+        // Signing out ends this device's sign-in, so its refresh token can't be used even if it was copied.
+        app.MapPost("/api/auth/logout", async (RefreshRequest request, AppDbContext db) =>
+        {
+            var hash = Hash(request.RefreshToken ?? "");
+            await db.RefreshTokens.Where(x => x.Hash == hash && x.RevokedAt == null)
+                .ExecuteUpdateAsync(x => x.SetProperty(t => t.RevokedAt, DateTimeOffset.UtcNow));
+            return Results.NoContent();
         });
     }
 
@@ -178,16 +192,60 @@ public static partial class Endpoints
         });
     }
 
-    static AuthResponse IssueToken(User user, IConfiguration config)
+    /// <summary>A new token pair; the refresh token's hash is stored for the next <see cref="RefreshAsync"/>.</summary>
+    static async Task<AuthResponse> IssueTokensAsync(User user, AppDbContext db, IConfiguration config)
     {
-        var expires = DateTimeOffset.UtcNow.AddDays(config.GetValue("Jwt:LifetimeDays", 30));
+        var now = DateTimeOffset.UtcNow;
+        var refresh = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var refreshExpires = now.AddDays(config.GetValue("Jwt:RefreshDays", 60));
+        // Expired sign-ins are kept until then only for spotting reuse; afterwards they are just clutter.
+        await db.RefreshTokens.Where(x => x.UserId == user.Id && x.ExpiresAt < now).ExecuteDeleteAsync();
+        db.RefreshTokens.Add(new RefreshToken { UserId = user.Id, Hash = Hash(refresh), ExpiresAt = refreshExpires });
+        await db.SaveChangesAsync();
+
+        var (token, expires) = AccessToken(user, config);
+        return new AuthResponse(token, expires, ChatService.ToDto(user), refresh, refreshExpires);
+    }
+
+    /// <summary>
+    /// Swaps a refresh token for a new pair; each works once. A token that was already swapped coming back means
+    /// someone copied it, so every sign-in of that user ends and both the thief and the owner must sign in again.
+    /// </summary>
+    static async Task<AuthResponse?> RefreshAsync(string? refreshToken, AppDbContext db, IConfiguration config)
+    {
+        var hash = Hash(refreshToken ?? "");
+        var stored = await db.RefreshTokens.FirstOrDefaultAsync(x => x.Hash == hash);
+        if (stored is null)
+            return null;
+        if (stored.Replaced)
+        {
+            await db.RefreshTokens.Where(x => x.UserId == stored.UserId && x.RevokedAt == null)
+                .ExecuteUpdateAsync(x => x.SetProperty(t => t.RevokedAt, DateTimeOffset.UtcNow));
+            return null;
+        }
+        if (stored.RevokedAt is not null || stored.ExpiresAt <= DateTimeOffset.UtcNow)
+            return null;
+        if (await db.Users.FirstOrDefaultAsync(x => x.Id == stored.UserId) is not { } user)
+            return null;
+
+        stored.RevokedAt = DateTimeOffset.UtcNow;
+        stored.Replaced = true;
+        await db.SaveChangesAsync();
+        return await IssueTokensAsync(user, db, config);
+    }
+
+    static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+    static (string Token, DateTimeOffset Expires) AccessToken(User user, IConfiguration config)
+    {
+        var expires = DateTimeOffset.UtcNow.AddMinutes(config.GetValue("Jwt:AccessMinutes", 60));
         var token = new JwtSecurityToken(
             issuer: config["Jwt:Issuer"],
             audience: config["Jwt:Audience"],
             claims: [new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString())],
             expires: expires.UtcDateTime,
             signingCredentials: new SigningCredentials(SigningKey(config), SecurityAlgorithms.HmacSha256));
-        return new AuthResponse(new JwtSecurityTokenHandler().WriteToken(token), expires, ChatService.ToDto(user));
+        return (new JwtSecurityTokenHandler().WriteToken(token), expires);
     }
 
     public static SymmetricSecurityKey SigningKey(IConfiguration config)

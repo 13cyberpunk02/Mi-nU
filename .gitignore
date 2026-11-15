@@ -21,3 +21,8 @@ server/deploy/firebase.json
 
 # Rider settings
 .idea/
+
+# Release output and signing keys
+publish/
+*.keystore
+*.jks

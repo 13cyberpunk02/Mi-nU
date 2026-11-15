@@ -160,6 +160,8 @@ namespace Mi_nU.Pages
             else
                 _connectedAt = null;
 
+            // Only while connecting: once connected the warning no longer matters.
+            RelayWarning.IsVisible = !_calls.HasRelay && _connectedAt is null && _calls.Phase != CallPhase.Idle;
             StatusLabel.Text = _connectedAt is { } start
                 ? (DateTime.UtcNow - start).ToString(@"mm\:ss")
                 : _calls.Phase == CallPhase.Connected ? "Соединение…" : "Вызов…";

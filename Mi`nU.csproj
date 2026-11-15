@@ -45,6 +45,40 @@
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
 
+	<!-- Release Android builds are signed with your own key; see "Сборка для выпуска" in README.ru.md.
+	     The password comes from an environment variable, so it never lands in this file or in git. -->
+	<PropertyGroup Condition="'$(Configuration)' == 'Release' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<AndroidPackageFormat>apk</AndroidPackageFormat>
+		<AndroidKeyStore>true</AndroidKeyStore>
+		<AndroidSigningKeyStore>$(MINU_KEYSTORE)</AndroidSigningKeyStore>
+		<AndroidSigningKeyAlias>minu</AndroidSigningKeyAlias>
+		<AndroidSigningStorePass>env:MINU_KEYSTORE_PASSWORD</AndroidSigningStorePass>
+		<AndroidSigningKeyPass>env:MINU_KEYSTORE_PASSWORD</AndroidSigningKeyPass>
+	</PropertyGroup>
+
+	<!-- A released Windows build carries .NET and Windows App SDK in its folder: other computers have neither. -->
+	<PropertyGroup Condition="'$(Configuration)' == 'Release' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>true</SelfContained>
+		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+	</PropertyGroup>
+
+	<!-- Only to try a release build against a local server without HTTPS. Never for a build you hand out. -->
+	<PropertyGroup Condition="'$(MinuAllowCleartext)' == 'true'">
+		<DefineConstants>$(DefineConstants);ALLOW_CLEARTEXT</DefineConstants>
+	</PropertyGroup>
+
+	<!-- The server address, read by ServerConfig. MSBuild also takes it from an environment variable of the same name. -->
+	<ItemGroup>
+		<AssemblyMetadata Include="MinuServerUrl" Value="$(MinuServerUrl)" />
+	</ItemGroup>
+
+	<Target Name="CheckReleaseSettings" BeforeTargets="BeforeBuild" Condition="'$(Configuration)' == 'Release'">
+		<Error Condition="'$(MinuServerUrl)' == ''" Text="Release builds need the server address: set MinuServerUrl, e.g. -p:MinuServerUrl=https://api.example.com (see README.ru.md)." />
+		<Error Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' And ('$(MINU_KEYSTORE)' == '' Or '$(MINU_KEYSTORE_PASSWORD)' == '')"
+		       Text="Release Android builds are signed: set MINU_KEYSTORE to your keystore and MINU_KEYSTORE_PASSWORD to its password (see README.ru.md)." />
+	</Target>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0F6E66" />
@@ -83,7 +117,8 @@
 		<!-- Firebase also brings lifecycle 2.11; MAUI's 2.9 LiveData and Process would otherwise warn (NU1608) that they want 2.9. -->
 		<PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
 		<PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
-		<GoogleServicesJson Include="Platforms\Android\google-services.json" Condition="Exists('Platforms\Android\google-services.json')" />
+		<!-- MinuNoPush=true leaves it out, for a build under another package name, which Firebase doesn't know. -->
+		<GoogleServicesJson Include="Platforms\Android\google-services.json" Condition="Exists('Platforms\Android\google-services.json') And '$(MinuNoPush)' != 'true'" />
 	</ItemGroup>
 
 </Project>

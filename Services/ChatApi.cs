@@ -67,28 +67,36 @@ namespace Mi_nU.Services
         /// <summary>A null <paramref name="type"/> is for requests the server answers with no body.</summary>
         async Task<T> SendAsync<T>(HttpMethod method, string path, HttpContent? content, JsonTypeInfo<T>? type, CancellationToken cancel = default)
         {
-            using var request = new HttpRequestMessage(method, auth.ServerUrl + path) { Content = content };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.Session?.Token);
-
-            try
+            for (var attempt = 0; ; attempt++)
             {
-                using var response = await _http.SendAsync(request, cancel);
-                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                var token = await auth.GetAccessTokenAsync();
+                // Not disposed: that would dispose the content, which a retry sends again.
+                var request = new HttpRequestMessage(method, auth.ServerUrl + path) { Content = content };
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                try
                 {
-                    auth.Logout();
-                    throw new ApiException("Сессия истекла. Войдите снова.");
-                }
-                if (!response.IsSuccessStatusCode)
-                    throw new ApiException("На сервере произошла ошибка. Повторите попытку позже.");
-                if (type is null)
-                    return default!;
+                    using var response = await _http.SendAsync(request, cancel);
+                    if (response.StatusCode == HttpStatusCode.Unauthorized)
+                    {
+                        // The token may have run out on the way: renew it once and try again.
+                        if (attempt == 0 && await auth.RenewAfterRejectionAsync(token))
+                            continue;
+                        auth.Logout();
+                        throw new ApiException("Сессия истекла. Войдите снова.");
+                    }
+                    if (!response.IsSuccessStatusCode)
+                        throw new ApiException("На сервере произошла ошибка. Повторите попытку позже.");
+                    if (type is null)
+                        return default!;
 
-                return await response.Content.ReadFromJsonAsync(type, cancel)
-                    ?? throw new ApiException("На сервере произошла ошибка. Повторите попытку позже.");
-            }
-            catch (Exception e) when (!cancel.IsCancellationRequested && e is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException)
-            {
-                throw new ApiException("Не удалось связаться с сервером. Проверьте подключение к сети.");
+                    return await response.Content.ReadFromJsonAsync(type, cancel)
+                        ?? throw new ApiException("На сервере произошла ошибка. Повторите попытку позже.");
+                }
+                catch (Exception e) when (!cancel.IsCancellationRequested && e is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException)
+                {
+                    throw new ApiException("Не удалось связаться с сервером. Проверьте подключение к сети.");
+                }
             }
         }
     }

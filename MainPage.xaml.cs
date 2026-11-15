@@ -244,7 +244,7 @@ namespace Mi_nU
             // While still signed in: the server must know whose notifications to stop.
             await _push.UnregisterAsync();
             // AppShell returns to the sign-in screen when the session ends.
-            _auth.Logout();
+            await _auth.LogoutAsync();
         }
     }
 }

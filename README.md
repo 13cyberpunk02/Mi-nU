@@ -75,14 +75,55 @@ The tests need the PostgreSQL container from above, and each run creates and del
 dotnet test server/MinU.Server.Tests
 ```
 
+## Server
+
+Deploying the server with PostgreSQL, HTTPS, TURN and push notifications is covered in [`server/deploy/README.md`](server/deploy/README.md).
+
+## Release builds
+
+Release builds have no server address field: the address is set when building, and the build stops without it.
+
+### Android
+
+The APK is signed with your own key. Create it once:
+
+```powershell
+keytool -genkeypair -v -keystore D:\keys\minu.keystore -alias minu -keyalg RSA -keysize 4096 -validity 10000
+```
+
+`keytool` comes with the JDK, for example `C:\Program Files\Microsoft\jdk-…\bin\keytool.exe`. Keep the key and its
+password out of the repository and back them up: an update only installs over an app signed with the same key, and a
+lost key can't be recovered.
+
+Build:
+
+```powershell
+$env:MINU_KEYSTORE = "D:\keys\minu.keystore"
+$env:MINU_KEYSTORE_PASSWORD = "the key's password"
+dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-android -p:MinuServerUrl=https://api.example.com -o publish/android
+```
+
+The result is `publish/android/com.cyberpunk02.minu-Signed.apk`. The phone asks to allow installing from that source.
+An app installed by a debug build is signed with a different key: uninstall it before the first release install.
+
+### Windows
+
+```powershell
+dotnet publish 'Mi`nU.csproj' -c Release -f net10.0-windows10.0.19041.0 -p:MinuServerUrl=https://api.example.com -o publish/windows
+```
+
+`publish/windows` holds everything, .NET and Windows App SDK included: zip it and hand it over, nothing needs installing
+on the other computer. Start `MinU.exe`. Notifications don't work when it runs as administrator.
+
+### Trying a release build against a local server
+
+`-p:MinuAllowCleartext=true` allows plain HTTP, to try a release build against a server on your own computer. Never hand
+such a build out.
+
 ## Before deploying
 
-The server and app are not ready for production as they are:
-
-- Set `Jwt:Key` to your own secret of at least 32 characters, and `ConnectionStrings:Default` to your database. Don't use the values from `appsettings.Development.json`.
-- Set `Database:MigrateOnStartup` to `true` or apply migrations yourself: outside `Development` they don't run by default.
-- Use HTTPS, and set the server address in `AuthService`: release builds have no address field, and Android 9 and later block plain HTTP in them.
 - Run a single server instance: calls in progress are kept in memory.
+- Push notifications are Android only. On Windows, notifications arrive while the app is running.
 
 ## License
 

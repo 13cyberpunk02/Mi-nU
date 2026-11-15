@@ -4,7 +4,11 @@ public enum ChatKind { Direct, Group }
 
 public record RegisterRequest(string UserName, string DisplayName, string Password);
 public record LoginRequest(string UserName, string Password);
-public record AuthResponse(string Token, DateTimeOffset ExpiresAt, UserDto User);
+/// <summary>
+/// <see cref="Token"/> is short-lived and goes with every request; <see cref="RefreshToken"/> lasts weeks and only buys new tokens.
+/// </summary>
+public record AuthResponse(string Token, DateTimeOffset ExpiresAt, UserDto User, string RefreshToken, DateTimeOffset RefreshExpiresAt);
+public record RefreshRequest(string RefreshToken);
 
 public record UserDto(Guid Id, string UserName, string DisplayName);
 

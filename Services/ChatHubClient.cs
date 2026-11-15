@@ -37,7 +37,8 @@ namespace Mi_nU.Services
 
             var hub = new HubConnectionBuilder()
                 .WithUrl($"{auth.ServerUrl}/hubs/chat", options =>
-                    options.AccessTokenProvider = () => Task.FromResult(auth.Session?.Token))
+                    // Asked on every connect and reconnect, so an expired token is renewed first.
+                    options.AccessTokenProvider = auth.GetAccessTokenAsync)
                 .WithAutomaticReconnect(new RetryForever())
                 .Build();
 
@@ -109,8 +110,12 @@ namespace Mi_nU.Services
                 }
                 catch (HttpRequestException e) when (e.StatusCode == HttpStatusCode.Unauthorized)
                 {
-                    MainThread.BeginInvokeOnMainThread(auth.Logout);
-                    return;
+                    // Renewing signs the user out if the session is really over; offline, it just waits for the next try.
+                    if (await auth.RenewAfterRejectionAsync(auth.Session?.Token))
+                        continue;
+                    if (auth.Session is null)
+                        return;
+                    await Task.Delay(TimeSpan.FromSeconds(5), stop).ContinueWith(_ => { });
                 }
                 catch (Exception) when (!stop.IsCancellationRequested)
                 {

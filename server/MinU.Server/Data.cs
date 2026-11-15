@@ -52,8 +52,23 @@ public class DeviceToken
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
+/// <summary>
+/// A sign-in on one device. Only a hash is stored, so a leaked database can't be used to sign in.
+/// Each refresh replaces the token; seeing a replaced one again means it was copied, see Endpoints.RefreshAsync.
+/// </summary>
+public class RefreshToken
+{
+    public long Id { get; set; }
+    public Guid UserId { get; set; }
+    public required string Hash { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+    public bool Replaced { get; set; }
+}
+
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Chat> Chats => Set<Chat>();
     public DbSet<ChatMember> ChatMembers => Set<ChatMember>();
@@ -88,6 +103,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             message.HasIndex(x => new { x.ChatId, x.Id });
             // A client resends with the same id after a lost connection; the index keeps that from duplicating.
             message.HasIndex(x => new { x.SenderId, x.ClientMessageId }).IsUnique();
+        });
+
+        model.Entity<RefreshToken>(token =>
+        {
+            token.Property(x => x.Hash).HasMaxLength(64);
+            token.HasIndex(x => x.Hash).IsUnique();
+            token.HasIndex(x => x.UserId);
+            token.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<DeviceToken>(device =>
