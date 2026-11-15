@@ -39,6 +39,8 @@ namespace Mi_nU.Pages
             _calls.Changed += Refresh;
             _calls.SpeakingChanged += Refresh;
             _timer.Start();
+            // Asked once rather than on every refresh: listing devices goes to the system. The list itself is fresh on each tap.
+            AudioOutputButton.IsVisible = _calls.AudioOutputs.Count > 1;
             Refresh();
         }
 
@@ -211,11 +213,40 @@ namespace Mi_nU.Pages
 
         void OnCameraClicked(object? sender, EventArgs e) => _calls.SetCameraOff(!_calls.IsCameraOff);
 
+        // Two cameras, as on a phone, simply swap; more, as on a computer with a webcam and virtual ones, are picked by name.
         async void OnSwitchCameraClicked(object? sender, EventArgs e)
         {
+            var cameras = _calls.Cameras;
+            Maui.WebRTC.CameraDevice? target = null;
+            if (cameras.Count > 2)
+            {
+                var current = _calls.CurrentCamera;
+                var index = await ChooseAsync("Камера", cameras.Select(camera => (camera.Name, camera.Index == current?.Index)).ToList());
+                if (index < 0)
+                    return;
+                target = cameras[index];
+            }
+
             SwitchCameraButton.IsEnabled = false;
-            await _calls.SwitchCameraAsync();
+            await _calls.SwitchCameraAsync(target);
             SwitchCameraButton.IsEnabled = true;
+        }
+
+        async void OnAudioOutputClicked(object? sender, EventArgs e)
+        {
+            var outputs = _calls.AudioOutputs;
+            var current = _calls.CurrentAudioOutputId;
+            var index = await ChooseAsync("Звук", outputs.Select(output => (output.Name, output.Id == current)).ToList());
+            if (index >= 0 && !_calls.SelectAudioOutput(outputs[index]))
+                await DisplayAlertAsync("Звук", $"Не удалось переключиться на «{outputs[index].Name}».", "OK");
+        }
+
+        /// <summary>A list to pick from, the current choice marked; the index picked, or -1 if cancelled.</summary>
+        async Task<int> ChooseAsync(string title, IReadOnlyList<(string Name, bool Current)> items)
+        {
+            var labels = items.Select(item => item.Current ? $"{item.Name} (сейчас)" : item.Name).ToArray();
+            var choice = await DisplayActionSheetAsync(title, "Отмена", null, labels);
+            return Array.IndexOf(labels, choice);
         }
 
         // AppShell leaves this page when the call finishes.

@@ -64,8 +64,11 @@
             <Label x:Name="DebugLabel" AutomationId="CallDebug" IsVisible="False" FontSize="11" TextColor="{StaticResource CallMuted}" />
             <Border BackgroundColor="{StaticResource CallSurface}" StrokeThickness="0" StrokeShape="RoundRectangle 28" Padding="16,12"
                     HorizontalOptions="Center" MaximumWidthRequest="480">
-                <HorizontalStackLayout Spacing="20">
+                <!-- Up to five buttons; the spacing keeps them on one row of a narrow phone. -->
+                <HorizontalStackLayout Spacing="14">
                     <Button x:Name="MuteButton" AutomationId="CallMute" Style="{StaticResource CallButton}" Clicked="OnMuteClicked" />
+                    <Button x:Name="AudioOutputButton" AutomationId="CallAudioOutput" Text="{x:Static themes:Icons.Volume}" Style="{StaticResource CallButton}"
+                            SemanticProperties.Description="Куда выводить звук" IsVisible="False" Clicked="OnAudioOutputClicked" />
                     <Button x:Name="CameraButton" AutomationId="CallCamera" Style="{StaticResource CallButton}" Clicked="OnCameraClicked" />
                     <Button x:Name="SwitchCameraButton" AutomationId="CallSwitchCamera" Text="{x:Static themes:Icons.SwitchCamera}" Style="{StaticResource CallButton}"
                             SemanticProperties.Description="Переключить камеру" IsVisible="False" Clicked="OnSwitchCameraClicked" />

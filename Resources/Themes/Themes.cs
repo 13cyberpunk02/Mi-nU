@@ -59,6 +59,7 @@ namespace Mi_nU.Themes
         public const string PhoneOutgoing = "\uE13D";
         public const string PhoneMissed = "\uE13B";
         public const string SwitchCamera = "\uE180";
+        public const string Volume = "\uE1AB";
         public const string Close = "";
         public const string LogOut = "";
     }

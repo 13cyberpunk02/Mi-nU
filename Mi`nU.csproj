@@ -101,7 +101,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="13CyberPunk02.Maui.WebRTC" Version="0.1.0-preview.2" />
+		<PackageReference Include="13CyberPunk02.Maui.WebRTC" Version="0.1.0-preview.3" />
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="11.0.0" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="11.0.10" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="11.0.0" />

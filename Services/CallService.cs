@@ -156,21 +156,56 @@ namespace Mi_nU.Services
         /// <summary>A real camera is on and there is another one: front and back on a phone, a second webcam on a computer.</summary>
         public bool CanSwitchCamera => _camera is not null && CameraCapturer.CanSwitch;
 
-        /// <summary>Moves to the other camera. The video track stays the same, so the call isn't renegotiated.</summary>
-        public async Task SwitchCameraAsync()
+        /// <summary>The cameras to choose from during a video call: front and back on a phone, every camera on a computer.</summary>
+        public IReadOnlyList<CameraDevice> Cameras => _camera is null ? [] : CameraCapturer.Devices;
+
+        public CameraDevice? CurrentCamera => _camera?.Device;
+
+        /// <summary>
+        /// Moves to <paramref name="device"/>, or with none to the next camera. The video track stays the same, so the call
+        /// isn't renegotiated. On a computer the choice is remembered for the next call.
+        /// </summary>
+        public async Task SwitchCameraAsync(CameraDevice? device = null)
         {
             if (_camera is not { } camera)
                 return;
             try
             {
                 // Opening a camera can take a moment on Windows; the call screen shouldn't freeze meanwhile.
-                await Task.Run(camera.Switch);
+                await Task.Run(() =>
+                {
+                    if (device is null)
+                        camera.Switch();
+                    else
+                        camera.SwitchTo(device);
+                });
+#if WINDOWS
+                if (camera.Device is { } chosen)
+                    Preferences.Default.Set(CameraKey, chosen.Name);
+#endif
             }
             catch (Exception e) when (e is WebRtcException or InvalidOperationException or ObjectDisposedException)
             {
                 // The camera went away (the call ended, or it was unplugged): nothing to switch to.
             }
             Changed?.Invoke();
+        }
+
+#if WINDOWS
+        const string CameraKey = "camera";
+#endif
+
+        /// <summary>Where the call can be heard; empty outside a call.</summary>
+        public IReadOnlyList<AudioOutput> AudioOutputs => Phase == CallPhase.Idle ? [] : CallAudioRoutes.List(_factory);
+
+        public string? CurrentAudioOutputId => CallAudioRoutes.Current(_factory);
+
+        /// <summary>False when the device refused, for example a headset that was just switched off.</summary>
+        public bool SelectAudioOutput(AudioOutput output)
+        {
+            var selected = CallAudioRoutes.Select(_factory, output);
+            Changed?.Invoke();
+            return selected;
         }
 
 #if DEBUG
@@ -256,11 +291,20 @@ namespace Mi_nU.Services
                 else
                 {
                     _camera = new CameraCapturer();
+#if WINDOWS
+                    // The camera picked last time, if it's still connected.
+                    var remembered = Preferences.Default.Get(CameraKey, "");
+                    if (CameraCapturer.Devices.FirstOrDefault(device => device.Name == remembered) is { } preferred)
+                        _camera.Start(_source, preferred);
+                    else
+                        _camera.Start(_source);
+#else
                     _camera.Start(_source);
+#endif
                 }
             }
 
-            UseCallAudio(true, speaker: video);
+            CallAudioRoutes.Enter(_factory, speaker: video);
             DeviceDisplay.Current.KeepScreenOn = true;
             StartListening();
         }
@@ -491,7 +535,7 @@ namespace Mi_nU.Services
             Changed?.Invoke();
             Finished?.Invoke(reason);
 
-            UseCallAudio(false, speaker: false);
+            CallAudioRoutes.Leave();
             DeviceDisplay.Current.KeepScreenOn = false;
 
             var previous = _cleanup;
@@ -521,19 +565,6 @@ namespace Mi_nU.Services
         }
 
         static void OnMainThread(Action action) => MainThread.BeginInvokeOnMainThread(action);
-
-        static void UseCallAudio(bool inCall, bool speaker)
-        {
-#if ANDROID
-            // Without this mode Android applies no echo cancellation and keeps the output at media volume.
-            var context = global::Android.App.Application.Context;
-            var audio = (global::Android.Media.AudioManager)context.GetSystemService(global::Android.Content.Context.AudioService)!;
-            audio.Mode = inCall ? global::Android.Media.Mode.InCommunication : global::Android.Media.Mode.Normal;
-#pragma warning disable CA1422 // Its replacement, SetCommunicationDevice, only exists from Android 12.
-            audio.SpeakerphoneOn = speaker;
-#pragma warning restore CA1422
-#endif
-        }
     }
 
     /// <summary>The connection to one other participant.</summary>
