@@ -79,9 +79,17 @@ namespace Mi_nU.Controls
             _hub = services.GetRequiredService<ChatHubClient>();
             _calls = services.GetRequiredService<CallService>();
             _activity = services.GetRequiredService<AppActivity>();
+            _presence = services.GetRequiredService<PresenceService>();
             Messages.ItemsSource = _rows;
             MessageEntry.MaxLength = Limits.MessageMax;
+            // "5 мин назад" has to keep counting while the chat stays open.
+            _clock = Dispatcher.CreateTimer();
+            _clock.Interval = TimeSpan.FromSeconds(30);
+            _clock.Tick += (_, _) => ShowPresence();
         }
+
+        readonly PresenceService _presence;
+        readonly IDispatcherTimer _clock;
 
         public bool ShowBack
         {
@@ -108,10 +116,42 @@ namespace Mi_nU.Controls
             HeaderName.Text = chat.Title;
             HeaderAvatar.Name = chat.Title;
             HeaderAvatar.Seed = new ChatRow(chat).Seed;
-            HeaderSubtitle.Text = chat.Kind == ChatKind.Group ? $"Участников: {chat.Members.Count}" : "";
-            HeaderSubtitle.IsVisible = chat.Kind == ChatKind.Group;
+            ShowPresence();
             if (_active)
                 _ = LoadLatestAsync();
+        }
+
+        /// <summary>Under the name: the other person's presence, or for a group its size and how many are online.</summary>
+        void ShowPresence()
+        {
+            if (_chat is not { } chat)
+                return;
+
+            var me = _auth.Session?.User.Id;
+            var others = chat.Members.Where(member => member.Id != me).ToList();
+            string text;
+            var online = false;
+            if (chat.Kind == ChatKind.Group)
+            {
+                var count = others.Count(member => _presence.IsOnline(member.Id));
+                text = count > 0 ? $"Участников: {chat.Members.Count} · в сети: {count}" : $"Участников: {chat.Members.Count}";
+            }
+            else
+            {
+                var presence = others.Count == 1 ? _presence.Of(others[0].Id) : null;
+                text = PresenceService.Describe(presence);
+                online = presence?.Online == true;
+            }
+
+            HeaderSubtitle.Text = text;
+            HeaderSubtitle.IsVisible = text.Length > 0;
+            HeaderSubtitle.SetDynamicResource(Label.TextColorProperty, online ? "AccentText" : "TextMuted");
+        }
+
+        void OnPresenceChanged(Guid userId)
+        {
+            if (_chat?.Members.Any(member => member.Id == userId) == true)
+                ShowPresence();
         }
 
         public void Activate()
@@ -124,6 +164,9 @@ namespace Mi_nU.Controls
             _hub.ChatRead += OnChatRead;
             _hub.Connected += OnConnected;
             _activity.Changed += MarkSeen;
+            _presence.Changed += OnPresenceChanged;
+            _clock.Start();
+            ShowPresence();
             _ = LoadLatestAsync();
         }
 
@@ -137,6 +180,8 @@ namespace Mi_nU.Controls
             _hub.ChatRead -= OnChatRead;
             _hub.Connected -= OnConnected;
             _activity.Changed -= MarkSeen;
+            _presence.Changed -= OnPresenceChanged;
+            _clock.Stop();
         }
 
         /// <summary>

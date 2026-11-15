@@ -9,7 +9,8 @@ namespace Mi_nU
         readonly AppActivity _activity;
         readonly DesktopNotifications _notifications;
 
-        public App(AppShell shell, AppActivity activity, DesktopNotifications notifications)
+        // PresenceService is asked for only to exist from the start: it has to see the first connection.
+        public App(AppShell shell, AppActivity activity, DesktopNotifications notifications, PresenceService presence)
         {
             InitializeComponent();
             Themes.ThemeManager.Apply(this);

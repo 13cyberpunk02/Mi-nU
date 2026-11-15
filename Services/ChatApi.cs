@@ -20,6 +20,7 @@ namespace Mi_nU.Services
     [JsonSerializable(typeof(List<MessageDto>))]
     [JsonSerializable(typeof(IceServersDto))]
     [JsonSerializable(typeof(RegisterDeviceRequest))]
+    [JsonSerializable(typeof(List<Presence>))]
     internal partial class ChatJsonContext : JsonSerializerContext;
 
     public class ChatApi(AuthService auth)
@@ -32,6 +33,10 @@ namespace Mi_nU.Services
 
         public Task<List<ChatDto>> GetChatsAsync() =>
             SendAsync(HttpMethod.Get, "/api/chats", null, ChatJsonContext.Default.ListChatDto);
+
+        /// <summary>Presence of everyone the user shares a chat with.</summary>
+        public Task<List<Presence>> GetPresenceAsync() =>
+            SendAsync(HttpMethod.Get, "/api/presence", null, ChatJsonContext.Default.ListPresence);
 
         public Task<List<UserDto>> SearchUsersAsync(string query, CancellationToken cancel = default) =>
             SendAsync(HttpMethod.Get, $"/api/users?query={Uri.EscapeDataString(query)}", null, ChatJsonContext.Default.ListUserDto, cancel);

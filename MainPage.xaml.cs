@@ -4,8 +4,11 @@ using MinU.Contracts;
 
 namespace Mi_nU
 {
-    /// <summary><see cref="Viewer"/> is the signed-in user, whose own last message shows its ticks instead of a name.</summary>
-    public record ChatRow(ChatDto Chat, Guid Viewer = default)
+    /// <summary>
+    /// <see cref="Viewer"/> is the signed-in user, whose own last message shows its ticks instead of a name.
+    /// <see cref="Online"/>: the other person of a direct chat is in the app now.
+    /// </summary>
+    public record ChatRow(ChatDto Chat, Guid Viewer = default, bool Online = false)
     {
         public string Title => Chat.Title;
         public string Seed => Chat.Kind == ChatKind.Direct ? Chat.Title : Chat.Id.ToString();
@@ -56,10 +59,12 @@ namespace Mi_nU
         readonly PushNotifications _push;
         readonly DesktopNotifications _desktop;
         readonly AppActivity _activity;
+        readonly PresenceService _presence;
         readonly ObservableCollection<ChatRow> _chats = [];
         bool _pushRegistered;
 
-        public MainPage(AuthService auth, ChatApi api, ChatHubClient hub, PushNotifications push, DesktopNotifications desktop, AppActivity activity)
+        public MainPage(AuthService auth, ChatApi api, ChatHubClient hub, PushNotifications push, DesktopNotifications desktop,
+            AppActivity activity, PresenceService presence)
         {
             InitializeComponent();
             _auth = auth;
@@ -68,6 +73,9 @@ namespace Mi_nU
             _push = push;
             _desktop = desktop;
             _activity = activity;
+            _presence = presence;
+            // Kept up to date also while a chat page covers the list, so going back shows it right away.
+            presence.Changed += OnPresenceChanged;
             ChatList.ItemsSource = _chats;
             SizeChanged += (_, _) => UpdateLayout();
             Current = this;
@@ -198,7 +206,30 @@ namespace Mi_nU
             ApplySearch();
         });
 
-        ChatRow Row(ChatDto chat) => new(chat, _auth.Session?.User.Id ?? default);
+        ChatRow Row(ChatDto chat)
+        {
+            var me = _auth.Session?.User.Id ?? default;
+            var online = chat.Kind == ChatKind.Direct && chat.Members.Any(member => member.Id != me && _presence.IsOnline(member.Id));
+            return new(chat, me, online);
+        }
+
+        void OnPresenceChanged(Guid userId)
+        {
+            var changed = false;
+            for (var i = 0; i < _chats.Count; i++)
+            {
+                if (_chats[i].Chat.Kind != ChatKind.Direct || _chats[i].Chat.Members.All(member => member.Id != userId))
+                    continue;
+                var row = Row(_chats[i].Chat);
+                if (row.Online != _chats[i].Online)
+                {
+                    _chats[i] = row;
+                    changed = true;
+                }
+            }
+            if (changed)
+                ApplySearch();
+        }
 
         /// <summary>The chat is open beside the list and the user is looking at it, so its messages are read as they come.</summary>
         bool IsInView(Guid chatId) => _twoPane && _visible && _activity.IsActive && Detail.ChatId == chatId;

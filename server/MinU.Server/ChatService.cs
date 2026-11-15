@@ -16,6 +16,22 @@ public class ChatService(AppDbContext db)
     public Task<List<Guid>> MemberIdsAsync(Guid chatId) =>
         db.ChatMembers.Where(x => x.ChatId == chatId).Select(x => x.UserId).ToListAsync();
 
+    /// <summary>Everyone who shares at least one chat with the user: the people who may see their presence.</summary>
+    public Task<List<Guid>> ContactIdsAsync(Guid userId) =>
+        db.ChatMembers
+            .Where(member => member.UserId != userId
+                && db.ChatMembers.Any(mine => mine.UserId == userId && mine.ChatId == member.ChatId))
+            .Select(member => member.UserId)
+            .Distinct()
+            .ToListAsync();
+
+    public async Task<List<Presence>> PresenceOfContactsAsync(Guid userId, PresenceTracker presence)
+    {
+        var ids = await ContactIdsAsync(userId);
+        var seen = await db.Users.Where(user => ids.Contains(user.Id)).Select(user => new { user.Id, user.LastSeenAt }).ToListAsync();
+        return seen.Select(user => new Presence(user.Id, presence.IsOnline(user.Id), user.LastSeenAt)).ToList();
+    }
+
     public async Task<List<ChatDto>> ChatsOfAsync(Guid userId)
     {
         var chats = await db.Chats

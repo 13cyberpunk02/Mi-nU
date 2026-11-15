@@ -7,9 +7,19 @@ using MinU.Contracts;
 namespace MinU.Server;
 
 [Authorize]
-public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db, PushQueue push) : Hub<IChatClient>
+public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db, PushQueue push, PresenceTracker presence) : Hub<IChatClient>
 {
     Guid UserId => Guid.Parse(Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    // A new connection counts as in view; an app that connects in the background says otherwise with SetActive.
+    public override async Task OnConnectedAsync()
+    {
+        await PresenceAsync(active: true);
+        await base.OnConnectedAsync();
+    }
+
+    /// <summary>The app came into view or left it: switched away, minimized, or the phone locked.</summary>
+    public Task SetActive(bool active) => PresenceAsync(active);
 
     public async Task<MessageDto> SendMessage(Guid chatId, string text, Guid clientMessageId)
     {
@@ -97,7 +107,25 @@ public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db, Pus
     {
         foreach (var departure in calls.LeaveAll(Context.ConnectionId))
             await NotifyLeftAsync(departure);
+        await PresenceAsync(active: null);
         await base.OnDisconnectedAsync(exception);
+    }
+
+    /// <summary>Records this connection's state and tells the user's contacts if that changes whether they're online.</summary>
+    async Task PresenceAsync(bool? active)
+    {
+        var me = UserId;
+        if (presence.Set(me, Context.ConnectionId, active) is not { } online)
+            return;
+
+        DateTimeOffset? lastSeen = null;
+        if (!online)
+        {
+            lastSeen = DateTimeOffset.UtcNow;
+            await db.Users.Where(user => user.Id == me).ExecuteUpdateAsync(set => set.SetProperty(user => user.LastSeenAt, lastSeen));
+        }
+        var contacts = await chats.ContactIdsAsync(me);
+        await Clients.Users(contacts.Select(id => id.ToString())).PresenceChanged(new Presence(me, online, lastSeen));
     }
 
     Task NotifyJoinedAsync(CallJoinResult result, UserDto me) =>

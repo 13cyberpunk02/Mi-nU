@@ -49,7 +49,13 @@
                                     </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
-                            <controls:Avatar Name="{Binding Title}" Seed="{Binding Seed}" Size="52" VerticalOptions="Center" />
+                            <Grid VerticalOptions="Center" WidthRequest="52" HeightRequest="52">
+                                <controls:Avatar Name="{Binding Title}" Seed="{Binding Seed}" Size="52" />
+                                <!-- The ring in the page colour sets the dot off the avatar. -->
+                                <Border IsVisible="{Binding Online}" WidthRequest="16" HeightRequest="16" StrokeShape="RoundRectangle 8" StrokeThickness="3"
+                                        Stroke="{DynamicResource Background}" BackgroundColor="{DynamicResource Accent}"
+                                        HorizontalOptions="End" VerticalOptions="End" AutomationId="ChatOnline" SemanticProperties.Description="В сети" />
+                            </Grid>
                             <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
                                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
                                     <Label Text="{Binding Title}" Style="{StaticResource Name}" Margin="0,0,4,0" />

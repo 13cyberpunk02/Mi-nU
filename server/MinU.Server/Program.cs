@@ -14,6 +14,7 @@ var config = builder.Configuration;
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(config.GetConnectionString("Default")));
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddSingleton<CallRegistry>();
+builder.Services.AddSingleton<PresenceTracker>();
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
 // Push needs the Firebase service account key; without it the app works, only without notifications.

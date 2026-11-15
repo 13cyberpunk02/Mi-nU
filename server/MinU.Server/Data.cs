@@ -11,6 +11,8 @@ public class User
     public required string DisplayName { get; set; }
     public string PasswordHash { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    /// <summary>When the user last left the app; null if they haven't since this was recorded.</summary>
+    public DateTimeOffset? LastSeenAt { get; set; }
 }
 
 public class Chat

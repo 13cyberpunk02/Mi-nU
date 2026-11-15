@@ -155,6 +155,10 @@ public static partial class Endpoints
         api.MapGet("/chats", async (ChatService chats, ClaimsPrincipal principal) =>
             Results.Ok(await chats.ChatsOfAsync(UserId(principal))));
 
+        // Presence of everyone the user shares a chat with; changes then arrive as PresenceChanged.
+        api.MapGet("/presence", async (ChatService chats, PresenceTracker presence, ClaimsPrincipal principal) =>
+            Results.Ok(await chats.PresenceOfContactsAsync(UserId(principal), presence)));
+
         api.MapPost("/chats/direct", async (CreateDirectChatRequest request, ChatService chats, ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub) =>
         {
             var me = UserId(principal);

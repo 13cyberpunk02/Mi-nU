@@ -21,6 +21,7 @@ namespace Mi_nU.Services
         public event Action<MessageDto>? MessageReceived;
         public event Action<ChatDto>? ChatCreated;
         public event Action<ReadReceipt>? ChatRead;
+        public event Action<Presence>? PresenceChanged;
         /// <summary>Connected or reconnected: anything sent while offline has to be fetched again.</summary>
         public event Action? Connected;
         public event Action<CallInvite>? CallInvited;
@@ -46,6 +47,7 @@ namespace Mi_nU.Services
             hub.On<MessageDto>(nameof(IChatClient.MessageReceived), message => MessageReceived?.Invoke(message));
             hub.On<ChatDto>(nameof(IChatClient.ChatCreated), chat => ChatCreated?.Invoke(chat));
             hub.On<ReadReceipt>(nameof(IChatClient.ChatRead), receipt => ChatRead?.Invoke(receipt));
+            hub.On<Presence>(nameof(IChatClient.PresenceChanged), presence => PresenceChanged?.Invoke(presence));
             hub.On<CallInvite>(nameof(IChatClient.CallInvited), invite => CallInvited?.Invoke(invite));
             hub.On<CallParticipant>(nameof(IChatClient.CallParticipantJoined), participant => CallParticipantJoined?.Invoke(participant));
             hub.On<CallParticipant>(nameof(IChatClient.CallParticipantLeft), participant => CallParticipantLeft?.Invoke(participant));
@@ -70,21 +72,24 @@ namespace Mi_nU.Services
             return await Connection().InvokeAsync<MessageDto>("SendMessage", chatId, text, clientMessageId);
         }
 
-        /// <summary>
-        /// Best effort: offline it is simply skipped, and the chat is marked again once the connection is back,
-        /// because the open chat reloads on <see cref="Connected"/>.
-        /// </summary>
-        public async Task MarkReadAsync(Guid chatId, long messageId)
+        /// <summary>Best effort, see <see cref="TryInvokeAsync"/>: the open chat reloads and marks itself again on <see cref="Connected"/>.</summary>
+        public Task MarkReadAsync(Guid chatId, long messageId) => TryInvokeAsync("MarkRead", chatId, messageId);
+
+        /// <summary>Best effort, see <see cref="TryInvokeAsync"/>: the state is sent again on <see cref="Connected"/>.</summary>
+        public Task SetActiveAsync(bool active) => TryInvokeAsync("SetActive", active);
+
+        // For calls whose effect is restored after reconnecting anyway: offline they're simply skipped.
+        async Task TryInvokeAsync(string method, params object?[] args)
         {
             if (_hub is not { State: HubConnectionState.Connected } hub)
                 return;
             try
             {
-                await hub.InvokeAsync("MarkRead", chatId, messageId);
+                await hub.InvokeCoreAsync(method, args);
             }
             catch (Exception)
             {
-                // Lost the connection on the way; see above.
+                // Lost the connection on the way.
             }
         }
 

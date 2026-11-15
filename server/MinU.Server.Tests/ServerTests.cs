@@ -527,6 +527,41 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
     }
 
     [Fact]
+    public async Task Presence_follows_the_app_and_reaches_only_contacts()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var mallory = await server.RegisterAsync("mallory");
+        await alice.DirectChatWithAsync(bob);
+
+        async Task<Presence?> PresenceOf(Client viewer, Client user) =>
+            (await viewer.Http.GetFromJsonAsync<List<Presence>>("/api/presence"))!.SingleOrDefault(x => x.UserId == user.User.Id);
+
+        Assert.True((await PresenceOf(bob, alice))!.Online);
+        Assert.Null(await PresenceOf(mallory, alice));
+
+        // Leaving the app on the only connection: offline, with the time.
+        var away = bob.Next<Presence>("PresenceChanged");
+        await alice.Hub.InvokeAsync("SetActive", false);
+        var left = await away;
+        Assert.Equal(alice.User.Id, left.UserId);
+        Assert.False(left.Online);
+        Assert.NotNull(left.LastSeenAt);
+        Assert.False((await PresenceOf(bob, alice))!.Online);
+        Assert.Equal(left.LastSeenAt!.Value.ToUnixTimeSeconds(), (await PresenceOf(bob, alice))!.LastSeenAt!.Value.ToUnixTimeSeconds());
+
+        var back = bob.Next<Presence>("PresenceChanged");
+        await alice.Hub.InvokeAsync("SetActive", true);
+        Assert.True((await back).Online);
+
+        // Closing the connection is leaving too.
+        var closed = bob.Next<Presence>("PresenceChanged");
+        await alice.Hub.StopAsync();
+        Assert.False((await closed).Online);
+        Assert.False((await PresenceOf(bob, alice))!.Online);
+    }
+
+    [Fact]
     public async Task Outsiders_cannot_mark_a_chat_read()
     {
         var alice = await server.RegisterAsync("alice");

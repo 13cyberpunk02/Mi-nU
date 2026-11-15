@@ -23,6 +23,12 @@ public record CreateGroupChatRequest(string Title, IReadOnlyList<Guid> MemberIds
 public record ChatDto(Guid Id, ChatKind Kind, string Title, IReadOnlyList<UserDto> Members, MessageDto? LastMessage,
     int UnreadCount = 0, long ReadUpTo = 0);
 
+/// <summary>
+/// Whether someone is in the app right now. <see cref="LastSeenAt"/> is when they last left it, null if unknown.
+/// Only people who share a chat see each other's presence.
+/// </summary>
+public record Presence(Guid UserId, bool Online, DateTimeOffset? LastSeenAt);
+
 /// <summary><see cref="UserId"/> has read <see cref="ChatId"/> up to and including message <see cref="MessageId"/>.</summary>
 public record ReadReceipt(Guid ChatId, Guid UserId, long MessageId);
 
@@ -92,6 +98,8 @@ public interface IChatClient
     Task MessageReceived(MessageDto message);
     /// <summary>Goes to every member, so the reader's other devices clear the chat's unread count too.</summary>
     Task ChatRead(ReadReceipt receipt);
+    /// <summary>Someone who shares a chat with this user came online or left.</summary>
+    Task PresenceChanged(Presence presence);
     Task ChatCreated(ChatDto chat);
     Task CallInvited(CallInvite invite);
     Task CallParticipantJoined(CallParticipant participant);
