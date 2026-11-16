@@ -47,7 +47,33 @@ public record CallSummary(bool Video, int? DurationSeconds);
 /// and <see cref="Text"/> describes it for apps that don't know call records.
 /// </summary>
 public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, DateTimeOffset SentAt, Guid ClientMessageId,
-    MessageKind Kind = MessageKind.Text, CallSummary? Call = null);
+    MessageKind Kind = MessageKind.Text, CallSummary? Call = null, IReadOnlyList<FileDto>? Attachments = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasAttachments => Attachments is { Count: > 0 };
+
+    /// <summary>One line for the chat list and notifications: the text, or what was attached when there is none.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string Summary
+    {
+        get
+        {
+            if (Attachments is not { Count: > 0 } files)
+                return Text;
+            var photos = files.Count(file => file.IsImage);
+            var what = photos == files.Count
+                ? photos == 1 ? "Фото" : $"Фото: {photos}"
+                : files.Count == 1 ? $"Файл · {files[0].Name}" : $"Файлы: {files.Count}";
+            return Text.Length > 0 ? $"{what} · {Text}" : what;
+        }
+    }
+}
+
+public static class AttachmentLimits
+{
+    /// <summary>How many files one message carries: an album of photos, say.</summary>
+    public const int PerMessage = 10;
+}
 
 /// <summary>
 /// STUN and TURN servers for calls: one ICE server per URL, all with these credentials.
@@ -85,8 +111,15 @@ public record CallSignal(Guid CallId, string FromParticipantId, string Type, str
 /// <summary>Whoever joins sends an offer to each of <see cref="Others"/>, who only answer, so offers never collide.</summary>
 public record CallJoinResult(Guid CallId, string ParticipantId, IReadOnlyList<CallParticipant> Others);
 
-/// <summary>An uploaded file. Its bytes are fetched through a short-lived link, see <see cref="FileLinkDto"/>.</summary>
-public record FileDto(Guid Id, string Name, string ContentType, long Size);
+/// <summary>
+/// An uploaded file. Its bytes are fetched through a short-lived link, see <see cref="FileLinkDto"/>.
+/// A picture has its size in pixels, for laying it out before it loads.
+/// </summary>
+public record FileDto(Guid Id, string Name, string ContentType, long Size, int? Width = null, int? Height = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsImage => ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>Downloads the file until <see cref="ExpiresAt"/>, without any other sign-in; ask for a new one after that.</summary>
 public record FileLinkDto(Uri Url, DateTimeOffset ExpiresAt);

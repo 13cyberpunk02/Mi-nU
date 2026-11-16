@@ -83,7 +83,7 @@ namespace Mi_nU.Services
             // An answered call needs no reminder; one nobody answered is a missed call.
             if (message.Call is { DurationSeconds: not null })
                 return;
-            var text = message.Call is { } call ? Formatting.CallTitle(call, outgoing: false) : message.Text;
+            var text = message.Call is { } call ? Formatting.CallTitle(call, outgoing: false) : message.Summary;
 
             var group = _chats.TryGetValue(message.ChatId, out var chat) && chat.Kind == ChatKind.Group ? chat.Title : null;
 #if WINDOWS

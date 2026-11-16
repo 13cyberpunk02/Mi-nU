@@ -614,12 +614,20 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
     // Downloads go straight to storage, as an app would, without the server's test handler.
     static readonly HttpClient Storage = new();
 
-    static async Task<FileDto> UploadAsync(Client client, Guid chatId, byte[] bytes, string name, string contentType)
+    // The first bytes of a PNG, which is all the server looks at.
+    static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, 1, 2, 3, 4];
+
+    static async Task<FileDto> UploadAsync(Client client, Guid chatId, byte[] bytes, string name, string contentType,
+        int? width = null, int? height = null)
     {
         using var form = new MultipartFormDataContent();
         var file = new ByteArrayContent(bytes);
         file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         form.Add(file, "file", name);
+        if (width is { } w)
+            form.Add(new StringContent(w.ToString()), "width");
+        if (height is { } h)
+            form.Add(new StringContent(h.ToString()), "height");
         var response = await client.Http.PostAsync($"/api/chats/{chatId}/files", form);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<FileDto>())!;
@@ -632,7 +640,7 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         var bob = await server.RegisterAsync("bob");
         var mallory = await server.RegisterAsync("mallory");
         var chat = await alice.DirectChatWithAsync(bob);
-        var bytes = Enumerable.Range(0, 5000).Select(i => (byte)i).ToArray();
+        var bytes = Png.Concat(Enumerable.Range(0, 5000 - Png.Length).Select(i => (byte)i)).ToArray();
 
         var uploaded = await UploadAsync(alice, chat.Id, bytes, "photo.png", "image/png");
         Assert.Equal(("photo.png", "image/png", 5000L), (uploaded.Name, uploaded.ContentType, uploaded.Size));
@@ -684,6 +692,66 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         Assert.Equal(HttpStatusCode.OK, (await Storage.GetAsync(shortLived)).StatusCode);
         await Task.Delay(TimeSpan.FromSeconds(2.5));
         Assert.Equal(HttpStatusCode.Forbidden, (await Storage.GetAsync(shortLived)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Photos_are_sent_in_a_message_with_their_size()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var bobDevice = await bob.RegisterDeviceAsync();
+        var chat = await alice.DirectChatWithAsync(bob);
+
+        var first = await UploadAsync(alice, chat.Id, Png, "a.png", "image/png", 1200, 800);
+        var second = await UploadAsync(alice, chat.Id, Png, "b.png", "image/png", 600, 900);
+        Assert.Equal((1200, 800), (first.Width, first.Height));
+        // Claiming to be a picture isn't enough: these bytes are no image, so they only download, without a size.
+        var fake = await UploadAsync(alice, chat.Id, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], "x.png", "image/png", 10, 10);
+        Assert.Equal(("application/octet-stream", (int?)null), (fake.ContentType, fake.Width));
+
+        var bobGot = bob.Next<MessageDto>("MessageReceived");
+        var clientId = Guid.NewGuid();
+        var sent = await alice.Hub.InvokeAsync<MessageDto>("SendAttachments", chat.Id, " look ", clientId, new[] { first.Id, second.Id });
+        var received = await bobGot;
+        Assert.Equal("look", received.Text);
+        Assert.Equal([first.Id, second.Id], received.Attachments!.Select(file => file.Id));
+        Assert.Equal("Фото: 2 · look", received.Summary);
+
+        // A resend after a lost connection gives the same message, not a second one.
+        var again = await alice.Hub.InvokeAsync<MessageDto>("SendAttachments", chat.Id, "look", clientId, new[] { first.Id, second.Id });
+        Assert.Equal(sent.Id, again.Id);
+
+        var history = (await bob.Http.GetFromJsonAsync<List<MessageDto>>($"/api/chats/{chat.Id}/messages"))!;
+        Assert.Equal(2, Assert.Single(history).Attachments!.Count);
+        var chats = (await bob.Http.GetFromJsonAsync<List<ChatDto>>("/api/chats"))!;
+        Assert.Equal("Фото: 2 · look", chats.Single(x => x.Id == chat.Id).LastMessage!.Summary);
+        Assert.Equal("Фото: 2 · look", (await server.Push.NextAsync(bobDevice, PushKeys.TypeMessage))[PushKeys.Text]);
+    }
+
+    [Fact]
+    public async Task Only_your_own_unsent_files_from_this_chat_can_be_sent()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var carol = await server.RegisterAsync("carol");
+        var chat = await alice.DirectChatWithAsync(bob);
+        var other = await alice.DirectChatWithAsync(carol);
+
+        var alices = await UploadAsync(alice, chat.Id, Png, "a.png", "image/png");
+        var elsewhere = await UploadAsync(alice, other.Id, Png, "b.png", "image/png");
+
+        Task Send(Client from, Guid chatId, params Guid[] files) =>
+            from.Hub.InvokeAsync<MessageDto>("SendAttachments", chatId, "", Guid.NewGuid(), files);
+
+        await Assert.ThrowsAsync<HubException>(() => Send(bob, chat.Id, alices.Id));
+        await Assert.ThrowsAsync<HubException>(() => Send(alice, chat.Id, elsewhere.Id));
+        await Assert.ThrowsAsync<HubException>(() => Send(alice, chat.Id));
+        await Assert.ThrowsAsync<HubException>(() => Send(alice, chat.Id, alices.Id, Guid.NewGuid()));
+        await Send(alice, chat.Id, alices.Id);
+        // Sent once; a second message can't take it again.
+        await Assert.ThrowsAsync<HubException>(() => Send(alice, chat.Id, alices.Id));
+        // A refused send claims nothing: the file from the other chat is still free there.
+        await Send(alice, other.Id, elsewhere.Id);
     }
 
     [Fact]

@@ -25,8 +25,10 @@ public static partial class Endpoints
         var api = app.MapGroup("/api").RequireAuthorization();
 
         // Uploads into a chat the user is in. The file isn't shown to anyone until it is sent in a message.
-        api.MapPost("/chats/{chatId:guid}/files", async (Guid chatId, IFormFile? file, ChatService chats, AppDbContext db,
-            IFileStorage storage, ClaimsPrincipal principal, CancellationToken cancel) =>
+        // A picture comes with its width and height, which the app measured; the server doesn't decode images.
+        api.MapPost("/chats/{chatId:guid}/files", async (Guid chatId, IFormFile? file, [FromForm] int? width, [FromForm] int? height,
+            ChatService chats, AppDbContext db, IFileStorage storage, ILogger<StoredFile> logger, ClaimsPrincipal principal,
+            CancellationToken cancel) =>
         {
             if (!storage.IsEnabled)
                 return Results.Json(new { error = "Files are not set up on this server." }, statusCode: StatusCodes.Status503ServiceUnavailable);
@@ -38,16 +40,32 @@ public static partial class Endpoints
             if (file.Length > Limits.FileMax)
                 return Problem($"A file can be at most {Limits.FileMax / 1024 / 1024} MB.");
 
+            await using var content = file.OpenReadStream();
+            var contentType = InlineTypes.Contains(file.ContentType) ? file.ContentType.ToLowerInvariant() : Download;
+            // Only what really is a picture is shown as one; the rest of the claim is ignored.
+            if (contentType.StartsWith("image/") && !await LooksLikeImageAsync(content, cancel))
+                contentType = Download;
+            var isImage = contentType.StartsWith("image/");
             var stored = new StoredFile
             {
                 OwnerId = me,
                 ChatId = chatId,
                 Name = CleanName(file.FileName),
-                ContentType = InlineTypes.Contains(file.ContentType) ? file.ContentType.ToLowerInvariant() : Download,
+                ContentType = contentType,
                 Size = file.Length,
+                Width = isImage && width is > 0 and <= 20_000 ? width : null,
+                Height = isImage && height is > 0 and <= 20_000 ? height : null,
             };
-            await using (var content = file.OpenReadStream())
+            try
+            {
                 await storage.PutAsync(stored.Key, content, stored.ContentType, cancel);
+            }
+            catch (Exception e) when (e is Amazon.Runtime.AmazonServiceException or HttpRequestException)
+            {
+                // Storage is down or refuses, out of space say. Its own log has the reason; the app gets a plain answer.
+                logger.LogError(e, "Storage refused file {Key} ({Size} bytes)", stored.Key, stored.Size);
+                return Results.Json(new { error = "File storage is unavailable." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
 
             db.Files.Add(stored);
             try
@@ -85,7 +103,30 @@ public static partial class Endpoints
         });
     }
 
-    public static FileDto ToDto(StoredFile file) => new(file.Id, file.Name, file.ContentType, file.Size);
+    public static FileDto ToDto(StoredFile file) => ChatService.ToDto(file);
+
+    static readonly byte[] JpegStart = [0xFF, 0xD8, 0xFF];
+    static readonly byte[] PngStart = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+    /// <summary>
+    /// Whether the bytes start like a picture an app can show: JPEG, PNG, GIF, WebP or HEIC. Leaves the stream at its start.
+    /// </summary>
+    static async Task<bool> LooksLikeImageAsync(Stream content, CancellationToken cancel)
+    {
+        var head = new byte[12];
+        var read = await content.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, cancel);
+        content.Position = 0;
+        if (read < head.Length)
+            return false;
+
+        ReadOnlySpan<byte> bytes = head;
+        return bytes[..3].SequenceEqual(JpegStart)
+            || bytes[..8].SequenceEqual(PngStart)
+            || bytes[..4].SequenceEqual("GIF8"u8)
+            || (bytes[..4].SequenceEqual("RIFF"u8) && bytes[8..12].SequenceEqual("WEBP"u8))
+            || (bytes[4..8].SequenceEqual("ftyp"u8) && (bytes[8..12].SequenceEqual("heic"u8) || bytes[8..12].SequenceEqual("heix"u8)
+                || bytes[8..12].SequenceEqual("mif1"u8) || bytes[8..12].SequenceEqual("heif"u8)));
+    }
 
     // Keeps only the name itself, whatever path or control characters a client sent along.
     static string CleanName(string? name)

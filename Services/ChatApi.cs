@@ -23,11 +23,38 @@ namespace Mi_nU.Services
     [JsonSerializable(typeof(List<Presence>))]
     [JsonSerializable(typeof(RenameGroupRequest))]
     [JsonSerializable(typeof(AddMembersRequest))]
+    [JsonSerializable(typeof(FileDto))]
+    [JsonSerializable(typeof(FileLinkDto))]
     internal partial class ChatJsonContext : JsonSerializerContext;
 
     public class ChatApi(AuthService auth)
     {
         readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
+        // A photo on a slow connection takes longer than any other request.
+        readonly HttpClient _uploads = new() { Timeout = TimeSpan.FromMinutes(5) };
+
+        /// <summary>
+        /// Uploads a file into the chat; it is seen by nobody until sent in a message. A picture's size in pixels goes
+        /// along, so the chat can lay it out before it loads.
+        /// </summary>
+        public Task<FileDto> UploadFileAsync(Guid chatId, byte[] bytes, string name, string contentType,
+            int? width = null, int? height = null, CancellationToken cancel = default)
+        {
+            // Bytes rather than a stream, so the request can be sent again after renewing the sign-in.
+            var form = new MultipartFormDataContent();
+            var file = new ByteArrayContent(bytes);
+            file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            form.Add(file, "file", name);
+            if (width is { } w)
+                form.Add(new StringContent(w.ToString(System.Globalization.CultureInfo.InvariantCulture)), "width");
+            if (height is { } h)
+                form.Add(new StringContent(h.ToString(System.Globalization.CultureInfo.InvariantCulture)), "height");
+            return SendAsync(HttpMethod.Post, $"/api/chats/{chatId}/files", form, ChatJsonContext.Default.FileDto, cancel, _uploads);
+        }
+
+        /// <summary>A short-lived link to download the file from storage, for a member of its chat.</summary>
+        public Task<FileLinkDto> GetFileLinkAsync(Guid fileId, CancellationToken cancel = default) =>
+            SendAsync(HttpMethod.Get, $"/api/files/{fileId}/link", null, ChatJsonContext.Default.FileLinkDto, cancel);
 
         /// <summary>STUN and TURN servers with fresh credentials; fetched for every call, so they never expire mid-call.</summary>
         public Task<IceServersDto> GetIceServersAsync() =>
@@ -86,8 +113,10 @@ namespace Mi_nU.Services
             SendAsync<object>(method, path, content, null);
 
         /// <summary>A null <paramref name="type"/> is for requests the server answers with no body.</summary>
-        async Task<T> SendAsync<T>(HttpMethod method, string path, HttpContent? content, JsonTypeInfo<T>? type, CancellationToken cancel = default)
+        async Task<T> SendAsync<T>(HttpMethod method, string path, HttpContent? content, JsonTypeInfo<T>? type,
+            CancellationToken cancel = default, HttpClient? http = null)
         {
+            http ??= _http;
             for (var attempt = 0; ; attempt++)
             {
                 var token = await auth.GetAccessTokenAsync();
@@ -97,7 +126,7 @@ namespace Mi_nU.Services
 
                 try
                 {
-                    using var response = await _http.SendAsync(request, cancel);
+                    using var response = await http.SendAsync(request, cancel);
                     if (response.StatusCode == HttpStatusCode.Unauthorized)
                     {
                         // The token may have run out on the way: renew it once and try again.

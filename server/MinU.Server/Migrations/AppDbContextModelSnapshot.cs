@@ -200,6 +200,12 @@ namespace MinU.Server.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("MessageId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -211,9 +217,14 @@ namespace MinU.Server.Migrations
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
 
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ChatId");
+
+                    b.HasIndex("MessageId");
 
                     b.HasIndex("OwnerId");
 

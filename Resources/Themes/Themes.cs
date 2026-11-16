@@ -60,6 +60,11 @@ namespace Mi_nU.Themes
         public const string PhoneMissed = "\uE13B";
         public const string SwitchCamera = "\uE180";
         public const string Volume = "\uE1AB";
+        public const string Paperclip = "\uE131";
+        public const string File = "\uE0C4";
+        public const string ImageOff = "\uE1C0";
+        public const string Camera = "\uE068";
+        public const string Image = "\uE0F9";
         public const string Close = "";
         public const string LogOut = "";
     }

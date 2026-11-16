@@ -35,6 +35,7 @@ namespace Mi_nU
             builder.Services.AddSingleton<Services.AppActivity>();
             builder.Services.AddSingleton<Services.AuthService>();
             builder.Services.AddSingleton<Services.ChatApi>();
+            builder.Services.AddSingleton<Services.FileCache>();
             builder.Services.AddSingleton<Services.ChatHubClient>();
             builder.Services.AddSingleton<Services.CallService>();
             builder.Services.AddSingleton<Services.PushNotifications>();
@@ -46,6 +47,7 @@ namespace Mi_nU
             builder.Services.AddTransient<Pages.NewChatPage>();
             builder.Services.AddTransient<Pages.NewGroupPage>();
             builder.Services.AddTransient<Pages.GroupInfoPage>();
+            builder.Services.AddTransient<Pages.PhotoPage>();
             builder.Services.AddTransient<Pages.StartupPage>();
             builder.Services.AddTransient<Pages.LoginPage>();
             builder.Services.AddTransient<Pages.RegisterPage>();

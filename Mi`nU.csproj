@@ -94,6 +94,10 @@
 
 		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+
+		<!-- The Windows head's App.xaml is WinUI markup, compiled as the WinUI ApplicationDefinition. MAUI 11 also takes it
+		     as MAUI XAML, and Visual Studio's XAML service then reports its WinUI types as missing, on every target. -->
+		<MauiXaml Remove="Platforms\Windows\App.xaml" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -18,6 +18,10 @@ namespace Mi_nU.Controls
 
         /// <summary>A line about a change to the group, from the server.</summary>
         public bool IsSystem { get; init; }
+        /// <summary>Photos and files sent with the message; <see cref="Text"/> is then their caption, possibly empty.</summary>
+        public IReadOnlyList<AttachmentItem>? Attachments { get; init; }
+        public bool HasAttachments => Attachments is { Count: > 0 };
+        public bool HasText => Text.Length > 0;
         /// <summary>Set for a call record, which shows as a call instead of text.</summary>
         public CallSummary? Call { get; init; }
         public string CallTitle => Call is null ? "" : Formatting.CallTitle(Call, IsMine);
@@ -85,6 +89,7 @@ namespace Mi_nU.Controls
         readonly ChatHubClient _hub;
         readonly CallService _calls;
         readonly AppActivity _activity;
+        readonly FileCache _files;
         readonly ObservableCollection<MessageRow> _rows = [];
         ChatDto? _chat;
         bool _active;
@@ -103,6 +108,7 @@ namespace Mi_nU.Controls
             _hub = services.GetRequiredService<ChatHubClient>();
             _calls = services.GetRequiredService<CallService>();
             _activity = services.GetRequiredService<AppActivity>();
+            _files = services.GetRequiredService<FileCache>();
             _presence = services.GetRequiredService<PresenceService>();
             Messages.ItemsSource = _rows;
             MessageEntry.MaxLength = Limits.MessageMax;
@@ -404,7 +410,168 @@ namespace Mi_nU.Controls
 
             var sending = row with { State = MessageState.Sending };
             Replace(row, sending);
-            await SendAsync(_chat, sending);
+            if (_outgoing.ContainsKey(row.ClientMessageId))
+                await SendPhotosAsync(_chat, sending);
+            else
+                await SendAsync(_chat, sending);
+        }
+
+        /// <summary>A picked photo on its way: kept with what is known of it, so a retry uploads only what didn't make it.</summary>
+        sealed class OutgoingPhoto(byte[] bytes, string name, string contentType, (int Width, int Height)? size, string localPath)
+        {
+            public byte[] Bytes => bytes;
+            public string Name => name;
+            public string ContentType => contentType;
+            public (int Width, int Height)? Size => size;
+            public string LocalPath => localPath;
+            public FileDto? Uploaded { get; set; }
+        }
+
+        /// <summary>Photos of messages not sent yet, by the message's client id.</summary>
+        readonly Dictionary<Guid, List<OutgoingPhoto>> _outgoing = [];
+
+        async void OnAttachClicked(object? sender, EventArgs e)
+        {
+            if (_chat is not { } chat)
+                return;
+
+            var photos = await PickPhotosAsync();
+            if (photos.Count == 0 || _chat?.Id != chat.Id)
+                return;
+
+            // Whatever was typed goes with them as the caption.
+            var caption = MessageEntry.Text?.Trim() ?? "";
+            if (caption.Length > Limits.MessageMax)
+                caption = caption[..Limits.MessageMax];
+            MessageEntry.Text = "";
+            var row = new MessageRow(null, Guid.NewGuid(), caption, _auth.Session?.User.DisplayName ?? "", false, true, DateTimeOffset.UtcNow, MessageState.Sending)
+            {
+                Attachments = photos
+                    .Select(photo => new AttachmentItem(
+                        new FileDto(Guid.Empty, photo.Name, photo.ContentType, photo.Bytes.Length, photo.Size?.Width, photo.Size?.Height),
+                        photo.LocalPath))
+                    .ToList(),
+            };
+            _outgoing[row.ClientMessageId] = photos;
+            _rows.Add(row);
+            Relink(_rows.Count - 1);
+            ScrollToEnd();
+            await SendPhotosAsync(chat, row);
+        }
+
+        /// <summary>
+        /// Photos from the gallery, or on a phone from the camera too. Already made smaller, turned upright and stripped of
+        /// their metadata by the picker: a photo's EXIF can hold where it was taken.
+        /// </summary>
+        async Task<List<OutgoingPhoto>> PickPhotosAsync()
+        {
+            var options = new MediaPickerOptions
+            {
+                Title = "Фото",
+                SelectionLimit = AttachmentLimits.PerMessage,
+                MaximumWidth = 2048,
+                MaximumHeight = 2048,
+                CompressionQuality = 85,
+                RotateImage = true,
+                PreserveMetaData = false,
+            };
+
+            List<FileResult> picked;
+            try
+            {
+                const string gallery = "Галерея";
+                const string camera = "Камера";
+                var useCamera = false;
+                if (DeviceInfo.Platform == DevicePlatform.Android && MediaPicker.Default.IsCaptureSupported)
+                {
+                    var choice = await Shell.Current.DisplayActionSheetAsync("Прикрепить", "Отмена", null, gallery, camera);
+                    if (choice is not (gallery or camera))
+                        return [];
+                    useCamera = choice == camera;
+                }
+                // Cancelled pickers give null or nothing.
+                picked = useCamera
+                    ? await MediaPicker.Default.CapturePhotoAsync(options) is { } shot ? [shot] : []
+                    : (await MediaPicker.Default.PickPhotosAsync(options) ?? []).Where(result => result is not null).ToList();
+            }
+            catch (PermissionException)
+            {
+                ShowError("Нет доступа к фото или камере. Разрешите его в настройках.");
+                return [];
+            }
+            catch (FeatureNotSupportedException)
+            {
+                ShowError("На этом устройстве выбрать фото нельзя.");
+                return [];
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                // Whatever else the system's picker throws, the chat stays open.
+                ShowError("Не удалось открыть фото.");
+                return [];
+            }
+
+            var photos = new List<OutgoingPhoto>();
+            var folder = Path.Combine(FileSystem.CacheDirectory, "outgoing");
+            Directory.CreateDirectory(folder);
+            foreach (var result in picked.Where(result => result is not null).Take(AttachmentLimits.PerMessage))
+            {
+                byte[] bytes;
+                await using (var stream = await result.OpenReadAsync())
+                using (var memory = new MemoryStream())
+                {
+                    await stream.CopyToAsync(memory);
+                    bytes = memory.ToArray();
+                }
+                if (bytes.Length is 0 or > (int)Limits.FileMax)
+                    continue;
+
+                var name = string.IsNullOrWhiteSpace(result.FileName) ? "photo.jpg" : result.FileName;
+                var contentType = string.IsNullOrWhiteSpace(result.ContentType) ? "image/jpeg" : result.ContentType;
+                // The picker's own file may go away; this copy shows the photo until it is sent.
+                var local = Path.Combine(folder, Guid.NewGuid().ToString("N") + Path.GetExtension(name));
+                await File.WriteAllBytesAsync(local, bytes);
+                photos.Add(new OutgoingPhoto(bytes, name, contentType, ImageSize.Of(bytes), local));
+            }
+            return photos;
+        }
+
+        async Task SendPhotosAsync(ChatDto chat, MessageRow row)
+        {
+            if (!_outgoing.TryGetValue(row.ClientMessageId, out var photos))
+                return;
+            try
+            {
+                foreach (var photo in photos.Where(photo => photo.Uploaded is null))
+                {
+                    var file = await _api.UploadFileAsync(chat.Id, photo.Bytes, photo.Name, photo.ContentType, photo.Size?.Width, photo.Size?.Height);
+                    // This device has the bytes already: they are never downloaded back.
+                    _files.Put(file, photo.Bytes);
+                    photo.Uploaded = file;
+                }
+                var sent = await _hub.SendAttachmentsAsync(chat.Id, row.Text, row.ClientMessageId, photos.Select(photo => photo.Uploaded!.Id).ToList());
+                _outgoing.Remove(row.ClientMessageId);
+                foreach (var photo in photos)
+                    TryDelete(photo.LocalPath);
+                if (_chat?.Id == chat.Id)
+                    Merge(sent);
+            }
+            catch (Exception)
+            {
+                Replace(row, row with { State = MessageState.Failed });
+            }
+        }
+
+        static void TryDelete(string path)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+                // Still open somewhere; the system clears the cache folder in time.
+            }
         }
 
         async Task SendAsync(ChatDto chat, MessageRow row)
@@ -480,6 +647,7 @@ namespace Mi_nU.Controls
                 Read = mine && message.Id <= _readUpTo,
                 Call = message.Kind == MessageKind.Call ? message.Call : null,
                 IsSystem = message.Kind == MessageKind.System,
+                Attachments = message.Attachments?.Select(file => new AttachmentItem(file)).ToList(),
             };
         }
 

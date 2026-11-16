@@ -17,9 +17,9 @@ namespace Mi_nU
             null => Chat.Kind == ChatKind.Group ? $"Участников: {Chat.Members.Count}" : "Сообщений пока нет",
             { Call: { } call } => Formatting.CallLine(call, LastIsMine),
             { Kind: MessageKind.System } last => last.Text,
-            var last when LastIsMine && Chat.Kind == ChatKind.Group => $"Вы: {last.Text}",
-            var last when Chat.Kind == ChatKind.Group => $"{last.Sender.DisplayName}: {last.Text}",
-            var last => last.Text,
+            var last when LastIsMine && Chat.Kind == ChatKind.Group => $"Вы: {last.Summary}",
+            var last when Chat.Kind == ChatKind.Group => $"{last.Sender.DisplayName}: {last.Summary}",
+            var last => last.Summary,
         };
         public string Time => Chat.LastMessage is { } last ? Formatting.Time(last.SentAt) : "";
 

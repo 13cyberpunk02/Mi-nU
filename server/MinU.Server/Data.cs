@@ -90,6 +90,11 @@ public class StoredFile
     public required string ContentType { get; set; }
     public long Size { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    /// <summary>The message it was sent in; null while it is only uploaded.</summary>
+    public long? MessageId { get; set; }
+    /// <summary>A picture's size in pixels, as the uploading app measured it, so a chat can lay it out before it loads.</summary>
+    public int? Width { get; set; }
+    public int? Height { get; set; }
 
     /// <summary>The object's name in storage: random, so one can't be guessed from another.</summary>
     public string Key => Id.ToString("N");
@@ -159,6 +164,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             file.Property(x => x.ContentType).HasMaxLength(128);
             file.HasIndex(x => x.ChatId);
             file.HasIndex(x => x.OwnerId);
+            file.HasIndex(x => x.MessageId);
             file.Ignore(x => x.Key);
         });
     }

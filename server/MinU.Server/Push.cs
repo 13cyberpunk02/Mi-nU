@@ -76,7 +76,7 @@ public class PushQueue
             [PushKeys.ChatId] = message.ChatId.ToString(),
             [PushKeys.ChatTitle] = groupTitle ?? "",
             [PushKeys.Sender] = message.Sender.DisplayName,
-            [PushKeys.Text] = message.Text.Length <= Limits.PushTextMax ? message.Text : message.Text[..Limits.PushTextMax] + "…",
+            [PushKeys.Text] = message.Summary.Length <= Limits.PushTextMax ? message.Summary : message.Summary[..Limits.PushTextMax] + "…",
         });
 
     // A call nobody answered within the minute is over: the push must not ring later.

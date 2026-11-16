@@ -22,6 +22,7 @@ namespace Mi_nU
             Routing.RegisterRoute("newchat", typeof(Pages.NewChatPage));
             Routing.RegisterRoute("newgroup", typeof(Pages.NewGroupPage));
             Routing.RegisterRoute("groupinfo", typeof(Pages.GroupInfoPage));
+            Routing.RegisterRoute("photo", typeof(Pages.PhotoPage));
             Routing.RegisterRoute("call", typeof(Pages.CallPage));
             Routing.RegisterRoute("incomingcall", typeof(Pages.IncomingCallPage));
             auth.SignedOut += OnSignedOut;

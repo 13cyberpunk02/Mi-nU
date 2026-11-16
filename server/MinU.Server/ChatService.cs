@@ -78,12 +78,70 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
             .GroupBy(x => x.ChatId)
             .Select(group => new { ChatId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(x => x.ChatId, x => x.Count);
+        var attachments = await AttachmentsOfAsync(lastIds);
 
         return chats
-            .Select(chat => ToDto(chat, userId, last.GetValueOrDefault(chat.Id), unread.GetValueOrDefault(chat.Id)))
+            .Select(chat => ToDto(chat, userId, last.GetValueOrDefault(chat.Id), unread.GetValueOrDefault(chat.Id), attachments))
             .OrderByDescending(chat => chat.LastMessage?.Id ?? 0)
             .ToList();
     }
+
+    /// <summary>The files sent in each of the messages, in the order they were attached.</summary>
+    async Task<Dictionary<long, List<FileDto>>> AttachmentsOfAsync(IReadOnlyCollection<long> messageIds)
+    {
+        if (messageIds.Count == 0)
+            return [];
+        var files = await db.Files.AsNoTracking()
+            .Where(file => file.MessageId != null && messageIds.Contains(file.MessageId.Value))
+            .OrderBy(file => file.CreatedAt)
+            .ToListAsync();
+        return files.GroupBy(file => file.MessageId!.Value).ToDictionary(group => group.Key, group => group.Select(ToDto).ToList());
+    }
+
+    public static FileDto ToDto(StoredFile file) => new(file.Id, file.Name, file.ContentType, file.Size, file.Width, file.Height);
+
+    /// <summary>
+    /// A message with files uploaded into the chat beforehand. They must be the sender's, in this chat, and not sent yet.
+    /// Null when they aren't. Sending again with the same client id returns the message already sent.
+    /// </summary>
+    public async Task<(MessageDto? Message, bool Created)> AddMessageWithFilesAsync(Guid chatId, Guid senderId, string text,
+        Guid clientMessageId, IReadOnlyCollection<Guid> fileIds)
+    {
+        if (await FindMessageAsync(senderId, clientMessageId) is { } existing)
+            return (await WithAttachmentsAsync(existing), false);
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var message = new Message { ChatId = chatId, SenderId = senderId, Text = text, ClientMessageId = clientMessageId };
+        db.Messages.Add(message);
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException e) when (IsUniqueViolation(e))
+        {
+            db.ChangeTracker.Clear();
+            return (await WithAttachmentsAsync((await FindMessageAsync(senderId, clientMessageId))!), false);
+        }
+
+        // One update that only takes files still free: two messages can't both claim the same file.
+        var claimed = await db.Files
+            .Where(file => fileIds.Contains(file.Id) && file.OwnerId == senderId && file.ChatId == chatId && file.MessageId == null)
+            .ExecuteUpdateAsync(set => set.SetProperty(file => file.MessageId, message.Id));
+        if (claimed != fileIds.Count)
+        {
+            await transaction.RollbackAsync();
+            db.ChangeTracker.Clear();
+            return (null, false);
+        }
+        await transaction.CommitAsync();
+
+        await db.Entry(message).Reference(x => x.Sender).LoadAsync();
+        await AdvanceReadAsync(chatId, senderId, message.Id);
+        return (await WithAttachmentsAsync(message), true);
+    }
+
+    async Task<MessageDto> WithAttachmentsAsync(Message message) =>
+        ToDto(message, (await AttachmentsOfAsync([message.Id])).GetValueOrDefault(message.Id));
 
     /// <summary>Returns the existing chat if the pair already has one; <c>Created</c> says which happened.</summary>
     public async Task<(Chat? Chat, bool Created)> GetOrCreateDirectAsync(Guid userId, Guid otherId)
@@ -215,7 +273,8 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
             .AsNoTracking()
             .ToListAsync();
         page.Reverse();
-        return page.Select(ToDto).ToList();
+        var attachments = await AttachmentsOfAsync(page.Select(message => message.Id).ToList());
+        return page.Select(message => ToDto(message, attachments.GetValueOrDefault(message.Id))).ToList();
     }
 
     public async Task<(MessageDto Message, bool Created)> AddMessageAsync(Guid chatId, Guid senderId, string text, Guid clientMessageId)
@@ -304,21 +363,26 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
             .Where(member => member.ChatId == chatId && member.UserId == userId && member.LastReadMessageId < messageId)
             .ExecuteUpdateAsync(set => set.SetProperty(member => member.LastReadMessageId, messageId)) > 0;
 
-    public static ChatDto ToDto(Chat chat, Guid viewerId, Message? last, int unread = 0)
+    public static ChatDto ToDto(Chat chat, Guid viewerId, Message? last, int unread = 0,
+        IReadOnlyDictionary<long, List<FileDto>>? attachments = null)
     {
         var members = chat.Members.Select(member => ToDto(member.User)).ToList();
         var title = chat.Kind == ChatKind.Direct
             ? members.FirstOrDefault(member => member.Id != viewerId)?.DisplayName ?? ""
             : chat.Title ?? "";
         var readUpTo = chat.Members.Where(member => member.UserId != viewerId).Select(member => member.LastReadMessageId).DefaultIfEmpty().Max();
-        return new ChatDto(chat.Id, chat.Kind, title, members, last is null ? null : ToDto(last), unread, readUpTo, chat.OwnerId);
+        var lastDto = last is null ? null : ToDto(last, attachments?.GetValueOrDefault(last.Id));
+        return new ChatDto(chat.Id, chat.Kind, title, members, lastDto, unread, readUpTo, chat.OwnerId);
     }
 
     public static UserDto ToDto(User user) => new(user.Id, user.UserName, user.DisplayName);
 
-    static MessageDto ToDto(Message message) =>
+    static MessageDto ToDto(Message message) => ToDto(message, null);
+
+    static MessageDto ToDto(Message message, IReadOnlyList<FileDto>? attachments) =>
         new(message.Id, message.ChatId, ToDto(message.Sender), message.Text, message.SentAt, message.ClientMessageId,
-            message.Kind, message.Kind == MessageKind.Call ? new CallSummary(message.CallVideo, message.CallSeconds) : null);
+            message.Kind, message.Kind == MessageKind.Call ? new CallSummary(message.CallVideo, message.CallSeconds) : null,
+            attachments is { Count: > 0 } ? attachments : null);
 
     Task<Chat?> FindDirectAsync(string key) => Chats().FirstOrDefaultAsync(chat => chat.DirectKey == key);
 

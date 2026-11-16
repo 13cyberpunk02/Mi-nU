@@ -14,7 +14,8 @@ services:
   # S3-compatible storage for files, as in the deployment. Development keys only, see appsettings.Development.json.
   seaweedfs:
     image: chrislusf/seaweedfs:4.54
-    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=64
+    # The same volume settings as the deployment, so what works here works there.
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=256 -volume.max=0
     ports:
       - "127.0.0.1:8333:8333"
     configs:

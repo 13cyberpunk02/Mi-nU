@@ -50,7 +50,9 @@ services:
   seaweedfs:
     image: chrislusf/seaweedfs:4.54
     restart: unless-stopped
-    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    # Volumes of 256 MB, as many as the free disk space holds. SeaweedFS's default is 30 GB volumes,
+    # which a small server can't create at all: every upload then fails.
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=256 -volume.max=0
     configs:
       - source: s3
         target: /etc/seaweedfs/s3.json

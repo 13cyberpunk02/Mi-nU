@@ -77,6 +77,13 @@ namespace Mi_nU.Services
             return await Connection().InvokeAsync<MessageDto>("SendMessage", chatId, text, clientMessageId);
         }
 
+        /// <summary>Sends files uploaded into the chat beforehand, with an optional caption.</summary>
+        public async Task<MessageDto> SendAttachmentsAsync(Guid chatId, string text, Guid clientMessageId, IReadOnlyList<Guid> fileIds)
+        {
+            await WaitConnectedAsync(TimeSpan.FromSeconds(10));
+            return await Connection().InvokeAsync<MessageDto>("SendAttachments", chatId, text, clientMessageId, fileIds);
+        }
+
         /// <summary>Best effort, see <see cref="TryInvokeAsync"/>: the open chat reloads and marks itself again on <see cref="Connected"/>.</summary>
         public Task MarkReadAsync(Guid chatId, long messageId) => TryInvokeAsync("MarkRead", chatId, messageId);
 

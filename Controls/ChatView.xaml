@@ -16,7 +16,14 @@
                 <Border HorizontalOptions="End" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
                         BackgroundColor="{DynamicResource BubbleMine}" MaximumWidthRequest="520">
                     <VerticalStackLayout Spacing="2">
-                        <Label Text="{Binding Text}" LineHeight="1.25" />
+                        <VerticalStackLayout Spacing="4" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Attachments}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="controls:AttachmentItem">
+                                    <controls:AttachmentView Item="{Binding .}" />
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Label Text="{Binding Text}" LineHeight="1.25" IsVisible="{Binding HasText}" />
                         <HorizontalStackLayout HorizontalOptions="End" Spacing="4">
                             <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource BubbleMineMuted}" VerticalTextAlignment="Center" />
                             <Label Text="{Binding Receipt}" IsVisible="{Binding ShowReceipt}" FontFamily="Icons" FontSize="14"
@@ -41,7 +48,14 @@
                 <Border HorizontalOptions="End" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
                         BackgroundColor="{DynamicResource BubbleFailed}" MaximumWidthRequest="520">
                     <VerticalStackLayout Spacing="2">
-                        <Label Text="{Binding Text}" LineHeight="1.25" />
+                        <VerticalStackLayout Spacing="4" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Attachments}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="controls:AttachmentItem">
+                                    <controls:AttachmentView Item="{Binding .}" />
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Label Text="{Binding Text}" LineHeight="1.25" IsVisible="{Binding HasText}" />
                         <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource DangerText}" HorizontalOptions="End" />
                     </VerticalStackLayout>
                 </Border>
@@ -56,7 +70,14 @@
                         BackgroundColor="{DynamicResource BubbleOther}" MaximumWidthRequest="520">
                     <VerticalStackLayout Spacing="2">
                         <Label Text="{Binding Sender}" IsVisible="{Binding ShowSenderName}" FontFamily="InterSemiBold" FontSize="13" TextColor="{DynamicResource AccentText}" />
-                        <Label Text="{Binding Text}" LineHeight="1.25" />
+                        <VerticalStackLayout Spacing="4" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Attachments}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="controls:AttachmentItem">
+                                    <controls:AttachmentView Item="{Binding .}" />
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Label Text="{Binding Text}" LineHeight="1.25" IsVisible="{Binding HasText}" />
                         <Label Text="{Binding Status}" Style="{StaticResource Small}" HorizontalOptions="End" />
                     </VerticalStackLayout>
                 </Border>
@@ -180,11 +201,14 @@
         <Label Grid.Row="3" x:Name="ErrorLabel" AutomationId="ChatError" IsVisible="False" Margin="16,4" Style="{StaticResource Error}" />
 
         <Grid Grid.Row="4" BackgroundColor="{DynamicResource Surface}" Padding="12,8">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
-                <Border Style="{StaticResource FilledField}" StrokeShape="RoundRectangle 22">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
+                <!-- Photos: the text typed meanwhile goes along as their caption. -->
+                <Button x:Name="AttachButton" AutomationId="ChatAttach" Text="{x:Static themes:Icons.Paperclip}" Style="{StaticResource IconButton}"
+                        SemanticProperties.Description="Прикрепить фото" VerticalOptions="End" Clicked="OnAttachClicked" />
+                <Border Grid.Column="1" Style="{StaticResource FilledField}" StrokeShape="RoundRectangle 22">
                     <Entry x:Name="MessageEntry" AutomationId="ChatInput" Placeholder="Сообщение" Keyboard="Chat" ReturnType="Send" Completed="OnSendClicked" />
                 </Border>
-                <Button Grid.Column="1" AutomationId="ChatSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
+                <Button Grid.Column="2" AutomationId="ChatSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
                         SemanticProperties.Description="Отправить" VerticalOptions="End" Clicked="OnSendClicked" />
             </Grid>
         </Grid>

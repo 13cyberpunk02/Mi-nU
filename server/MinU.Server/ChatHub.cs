@@ -38,6 +38,32 @@ public class ChatHub(ChatService chats, CallRegistry calls, AppDbContext db, Pus
         return message;
     }
 
+    /// <summary>
+    /// Sends files uploaded into the chat beforehand (POST /api/chats/{id}/files), with an optional caption.
+    /// Resending with the same <paramref name="clientMessageId"/> after a lost connection doesn't send twice.
+    /// </summary>
+    public async Task<MessageDto> SendAttachments(Guid chatId, string? text, Guid clientMessageId, IReadOnlyList<Guid> fileIds)
+    {
+        text = text?.Trim() ?? "";
+        if (text.Length > Limits.MessageMax)
+            throw new HubException($"A caption can be at most {Limits.MessageMax} characters long.");
+        var files = fileIds?.Distinct().ToList() ?? [];
+        if (files.Count is 0 or > AttachmentLimits.PerMessage)
+            throw new HubException($"A message carries 1 to {AttachmentLimits.PerMessage} files.");
+        await RequireMemberAsync(chatId);
+
+        var (message, created) = await chats.AddMessageWithFilesAsync(chatId, UserId, text, clientMessageId, files);
+        if (message is null)
+            throw new HubException("Those files can't be sent: they aren't yours, belong to another chat, or were sent already.");
+        if (created)
+        {
+            var members = await chats.MemberIdsAsync(chatId);
+            await Clients.Users(members.Select(id => id.ToString())).MessageReceived(message);
+            push.Message(members.Where(id => id != UserId), message, await chats.GroupTitleAsync(chatId));
+        }
+        return message;
+    }
+
     /// <summary>The user has seen the chat up to <paramref name="messageId"/>; the app calls this while the chat is on screen.</summary>
     public async Task MarkRead(Guid chatId, long messageId)
     {
