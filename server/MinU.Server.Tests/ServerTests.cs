@@ -28,6 +28,12 @@ public class ServerFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Turn:Secret", TurnSecret);
         builder.UseSetting("Turn:Urls:0", "turn:turn.example.com:3478?transport=udp");
         builder.UseSetting("Turn:Urls:1", "turns:turn.example.com:5349?transport=tcp");
+        // The SeaweedFS from server/docker-compose.yml; a bucket of its own per run.
+        builder.UseSetting("Storage:ServiceUrl", "http://127.0.0.1:8333");
+        builder.UseSetting("Storage:PublicUrl", "http://127.0.0.1:8333");
+        builder.UseSetting("Storage:AccessKey", "minu_dev");
+        builder.UseSetting("Storage:SecretKey", "minu_dev_secret");
+        builder.UseSetting("Storage:Bucket", "minu-test-" + _database[^12..]);
     }
 
     public const string TurnSecret = "test-turn-secret";
@@ -603,6 +609,99 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.False(await db.Chats.AnyAsync(x => x.Id == group.Id));
         Assert.False(await db.Messages.AnyAsync(x => x.ChatId == group.Id));
+    }
+
+    // Downloads go straight to storage, as an app would, without the server's test handler.
+    static readonly HttpClient Storage = new();
+
+    static async Task<FileDto> UploadAsync(Client client, Guid chatId, byte[] bytes, string name, string contentType)
+    {
+        using var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        form.Add(file, "file", name);
+        var response = await client.Http.PostAsync($"/api/chats/{chatId}/files", form);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<FileDto>())!;
+    }
+
+    [Fact]
+    public async Task Chat_members_get_a_working_link_and_nobody_else_does()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var mallory = await server.RegisterAsync("mallory");
+        var chat = await alice.DirectChatWithAsync(bob);
+        var bytes = Enumerable.Range(0, 5000).Select(i => (byte)i).ToArray();
+
+        var uploaded = await UploadAsync(alice, chat.Id, bytes, "photo.png", "image/png");
+        Assert.Equal(("photo.png", "image/png", 5000L), (uploaded.Name, uploaded.ContentType, uploaded.Size));
+
+        var link = (await bob.Http.GetFromJsonAsync<FileLinkDto>($"/api/files/{uploaded.Id}/link"))!;
+        Assert.InRange(link.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(9), DateTimeOffset.UtcNow.AddMinutes(11));
+        using (var download = await Storage.GetAsync(link.Url))
+        {
+            Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+            Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(bytes, await download.Content.ReadAsByteArrayAsync());
+        }
+
+        // Outside the chat neither the link nor an upload into it.
+        Assert.Equal(HttpStatusCode.NotFound, (await mallory.Http.GetAsync($"/api/files/{uploaded.Id}/link")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await mallory.Http.GetAsync($"/api/files/{Guid.NewGuid()}/link")).StatusCode);
+        using var form = new MultipartFormDataContent { { new ByteArrayContent([1, 2, 3]), "file", "x.bin" } };
+        Assert.Equal(HttpStatusCode.NotFound, (await mallory.Http.PostAsync($"/api/chats/{chat.Id}/files", form)).StatusCode);
+
+        // Without a signature, or with the link pointed at another file, storage refuses.
+        Assert.Equal(HttpStatusCode.Forbidden, (await Storage.GetAsync(link.Url.GetLeftPart(UriPartial.Path))).StatusCode);
+        var other = await UploadAsync(alice, chat.Id, [9, 9, 9], "other.png", "image/png");
+        var forged = link.Url.ToString().Replace(uploaded.Id.ToString("N"), other.Id.ToString("N"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await Storage.GetAsync(forged)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Links_expire_and_unknown_types_only_download()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var chat = await alice.DirectChatWithAsync(bob);
+
+        // A page must never open from storage: HTML is kept as a download, under its own name.
+        var page = await UploadAsync(alice, chat.Id, "<script>alert(1)</script>"u8.ToArray(), "../../отчёт.html", "text/html");
+        Assert.Equal(("отчёт.html", "application/octet-stream"), (page.Name, page.ContentType));
+        var link = (await alice.Http.GetFromJsonAsync<FileLinkDto>($"/api/files/{page.Id}/link"))!;
+        using (var download = await Storage.GetAsync(link.Url))
+        {
+            Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+            Assert.Equal("application/octet-stream", download.Content.Headers.ContentType?.MediaType);
+            Assert.Equal("attachment", download.Content.Headers.ContentDisposition?.DispositionType);
+            Assert.Equal("отчёт.html", download.Content.Headers.ContentDisposition?.FileNameStar);
+        }
+
+        // A link only works for as long as it was made for.
+        var storage = server.Services.GetRequiredService<IFileStorage>();
+        var shortLived = storage.LinkFor(page.Id.ToString("N"), TimeSpan.FromSeconds(1), null);
+        Assert.Equal(HttpStatusCode.OK, (await Storage.GetAsync(shortLived)).StatusCode);
+        await Task.Delay(TimeSpan.FromSeconds(2.5));
+        Assert.Equal(HttpStatusCode.Forbidden, (await Storage.GetAsync(shortLived)).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_deleted_group_takes_its_files_along()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var group = await alice.GroupWithAsync("team", bob);
+        var file = await UploadAsync(alice, group.Id, [1, 2, 3], "a.png", "image/png");
+        var storage = server.Services.GetRequiredService<IFileStorage>();
+
+        await bob.Http.DeleteAsync($"/api/chats/{group.Id}/members/{bob.User.Id}");
+        await alice.Http.DeleteAsync($"/api/chats/{group.Id}/members/{alice.User.Id}");
+
+        using var scope = server.Services.CreateScope();
+        Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().Files.AnyAsync(x => x.Id == file.Id));
+        var link = storage.LinkFor(file.Id.ToString("N"), TimeSpan.FromMinutes(1), null);
+        Assert.Equal(HttpStatusCode.NotFound, (await Storage.GetAsync(link)).StatusCode);
     }
 
     [Fact]

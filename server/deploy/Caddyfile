@@ -1,5 +1,15 @@
-# Caddy gets and renews the HTTPS certificate for API_DOMAIN on its own, and passes
-# requests on to MinU.Server, SignalR's WebSockets included.
+# Caddy gets and renews the HTTPS certificates for both domains on its own.
+
+# The API, SignalR's WebSockets included.
 {$API_DOMAIN} {
 	reverse_proxy server:8080
+}
+
+# File downloads. Links come from the server, signed and short-lived; SeaweedFS checks the signature.
+# Only reading is let through: uploads go from the server to storage inside the Docker network.
+{$FILES_DOMAIN} {
+	@write not method GET HEAD
+	respond @write 405
+	# The Host header passes through unchanged, as the signature covers it.
+	reverse_proxy seaweedfs:8333
 }

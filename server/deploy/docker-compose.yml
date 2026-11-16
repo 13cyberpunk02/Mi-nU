@@ -37,26 +37,52 @@ services:
       Turn__Urls__3: turns:${TURN_HOST}:5349?transport=tcp
       # Push notifications: the Firebase service account key, see README step 3.
       Firebase__CredentialsFile: /run/secrets/firebase.json
+      # Files: the server talks to SeaweedFS inside this network, and signs download links for FILES_DOMAIN.
+      Storage__ServiceUrl: http://seaweedfs:8333
+      Storage__PublicUrl: https://${FILES_DOMAIN:?set FILES_DOMAIN in .env}
+      Storage__AccessKey: ${STORAGE_ACCESS_KEY:?set STORAGE_ACCESS_KEY in .env}
+      Storage__SecretKey: ${STORAGE_SECRET_KEY:?set STORAGE_SECRET_KEY in .env}
     volumes:
       - ./firebase.json:/run/secrets/firebase.json:ro
+
+  # S3-compatible file storage. Only its S3 port is reachable from outside, through Caddy on FILES_DOMAIN,
+  # and every request there needs the server's signature; the admin interfaces stay inside this network.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.54
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: s3
+        target: /etc/seaweedfs/s3.json
+    volumes:
+      - seaweedfs:/data
 
   caddy:
     image: caddy:2.8.4
     restart: unless-stopped
     depends_on:
       - server
+      - seaweedfs
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     environment:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+      FILES_DOMAIN: ${FILES_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
 
+# The one identity allowed into storage: the server's, with the keys from .env.
+configs:
+  s3:
+    content: |
+      {"identities":[{"name":"minu","credentials":[{"accessKey":"${STORAGE_ACCESS_KEY}","secretKey":"${STORAGE_SECRET_KEY}"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+
 volumes:
   postgres:
+  seaweedfs:
   caddy_data:
   caddy_config:

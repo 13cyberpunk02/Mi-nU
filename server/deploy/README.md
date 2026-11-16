@@ -2,13 +2,15 @@
 
 # Deploying the Mi`nU server
 
-This runs the Mi`nU server (API, SignalR for chats and call signaling, PostgreSQL) on a Linux machine behind
+This runs the Mi`nU server (API, SignalR for chats and call signaling, PostgreSQL, SeaweedFS for files) on a Linux machine behind
 [Caddy](https://caddyserver.com/), which gets and renews the HTTPS certificate on its own. Calls over the internet also
 need a TURN server: set it up with [the Maui.WebRTC guide](https://github.com/13cyberpunk02/Maui.WebRTC/blob/main/docs/turn.md),
 on this machine or another one.
 
 ```
 App ──HTTPS/WSS──► Caddy :443 ──► MinU.Server :8080 ──► PostgreSQL
+ │                  │                   └──► SeaweedFS (uploads)
+ │                  └─ files domain ──► SeaweedFS :8333 (downloads, signed links only)
  │
  └── audio and video ──► coturn :3478/:5349 (only when devices can't reach each other directly)
 ```
@@ -18,6 +20,7 @@ App ──HTTPS/WSS──► Caddy :443 ──► MinU.Server :8080 ──► Po
 - A Linux server with a public IPv4 address and Docker (`curl -fsSL https://get.docker.com | sudo sh`).
 - A domain for the API, such as `api.example.com`, with an A record pointing at the server. The TURN server's domain
   works too: Caddy uses 443, coturn 3478 and 5349.
+- A second domain for files, such as `files.example.com`, with an A record pointing at the same server.
 - A working TURN server and its `static-auth-secret`.
 
 ## 2. Firewall
@@ -49,10 +52,16 @@ Fill in `.env`:
 | `API_DOMAIN` | the API domain, such as `api.example.com` |
 | `POSTGRES_PASSWORD` | `openssl rand -hex 32` |
 | `JWT_KEY` | `openssl rand -hex 32`, the key that signs sign-in tokens |
+| `FILES_DOMAIN` | the files domain, such as `files.example.com` |
+| `STORAGE_ACCESS_KEY` | `openssl rand -hex 16`, the server's name in file storage |
+| `STORAGE_SECRET_KEY` | `openssl rand -hex 32`, the key that signs download links |
 | `TURN_HOST` | the TURN server's domain |
 | `TURN_SECRET` | `static-auth-secret` from `turnserver.conf` |
 
 Don't change `JWT_KEY` without reason: everyone would have to sign in again. `.env` is kept out of git.
+
+Files in chats are only downloaded through links the server makes after checking who asks: a link names one file, is
+signed with `STORAGE_SECRET_KEY`, and stops working after 10 minutes. Without a valid signature storage answers `403`.
 
 ### Firebase key for push notifications
 
@@ -83,7 +92,7 @@ sudo docker compose logs -f server caddy
 
 The first image build takes a few minutes. On its first start the server creates the database tables itself. The
 `server` log then has one `fail` line about `__EFMigrationsHistory`: that's EF checking whether the migrations table
-exists yet, not an error. Caddy's log says when it got the certificate for `API_DOMAIN`.
+exists yet, not an error. Caddy's log says when it got the certificates for `API_DOMAIN` and `FILES_DOMAIN`.
 
 The `server` log should have no `push notifications are off` line. If it has, the server didn't find or couldn't read
 `firebase.json`: check the file's owner from step 3.
@@ -97,7 +106,13 @@ curl -i https://api.example.com/api/chats
 ```
 
 The expected answer is `401 Unauthorized`: the server runs, the certificate is valid, and nothing is served without
-signing in.
+signing in. And for files:
+
+```bash
+curl -i https://files.example.com/
+```
+
+The expected answer is `403 Forbidden` with `AccessDenied`: storage runs and gives nothing out without a signed link.
 
 Then the full check:
 
@@ -150,10 +165,21 @@ sudo docker compose up -d --build
 
 New database migrations are applied on start. PostgreSQL's data lives in the `postgres` volume and survives updates.
 
+A server set up before files existed needs `FILES_DOMAIN`, `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY` in `.env`
+(see step 3) and the files domain's A record first. Without them `docker compose` stops and names the missing setting.
+
 ## 9. Database backup
 
 ```bash
 sudo docker compose exec postgres pg_dump -U minu minu | gzip > minu-$(date +%F).sql.gz
+```
+
+Files live in the `seaweedfs` volume. To copy it:
+
+```bash
+sudo docker compose stop seaweedfs
+sudo docker run --rm -v deploy_seaweedfs:/data -v "$PWD":/backup alpine tar czf /backup/files-$(date +%F).tar.gz -C /data .
+sudo docker compose start seaweedfs
 ```
 
 Keep the copies somewhere other than this server.

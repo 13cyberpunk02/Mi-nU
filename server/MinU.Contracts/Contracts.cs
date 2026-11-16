@@ -85,8 +85,17 @@ public record CallSignal(Guid CallId, string FromParticipantId, string Type, str
 /// <summary>Whoever joins sends an offer to each of <see cref="Others"/>, who only answer, so offers never collide.</summary>
 public record CallJoinResult(Guid CallId, string ParticipantId, IReadOnlyList<CallParticipant> Others);
 
+/// <summary>An uploaded file. Its bytes are fetched through a short-lived link, see <see cref="FileLinkDto"/>.</summary>
+public record FileDto(Guid Id, string Name, string ContentType, long Size);
+
+/// <summary>Downloads the file until <see cref="ExpiresAt"/>, without any other sign-in; ask for a new one after that.</summary>
+public record FileLinkDto(Uri Url, DateTimeOffset ExpiresAt);
+
 public static class Limits
 {
+    /// <summary>The largest file a chat takes.</summary>
+    public const long FileMax = 100L * 1024 * 1024;
+    public const int FileNameMax = 255;
     public const int UserNameMin = 3;
     public const int UserNameMax = 32;
     public const int DisplayNameMax = 64;

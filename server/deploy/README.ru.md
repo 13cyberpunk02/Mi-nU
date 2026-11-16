@@ -2,13 +2,15 @@
 
 # Развёртывание сервера Mi`nU
 
-Здесь сервер Mi`nU (API, SignalR для чатов и сигнализации звонков, PostgreSQL) разворачивается на Linux-сервере за
+Здесь сервер Mi`nU (API, SignalR для чатов и сигнализации звонков, PostgreSQL, SeaweedFS для файлов) разворачивается на Linux-сервере за
 [Caddy](https://caddyserver.com/), который сам получает и продлевает HTTPS-сертификат. Звонкам через интернет нужен ещё
 TURN-сервер: его разворачивают по [гайду из Maui.WebRTC](https://github.com/13cyberpunk02/Maui.WebRTC/blob/main/docs/turn.ru.md),
 можно на этой же машине.
 
 ```
 Приложение ──HTTPS/WSS──► Caddy :443 ──► MinU.Server :8080 ──► PostgreSQL
+     │                     │                   └──► SeaweedFS (загрузка)
+     │                     └─ домен файлов ──► SeaweedFS :8333 (скачивание, только по подписанным ссылкам)
      │
      └── звук и видео ──► coturn :3478/:5349 (только если устройства не видят друг друга напрямую)
 ```
@@ -18,6 +20,7 @@ TURN-сервер: его разворачивают по [гайду из Maui.
 - Linux-сервер с публичным IPv4 и Docker (`curl -fsSL https://get.docker.com | sudo sh`).
 - Домен для API, например `api.example.com`, с A-записью на адрес сервера. Можно взять и тот же домен, что у TURN:
   Caddy работает на 443, а coturn на 3478 и 5349.
+- Второй домен для файлов, например `files.example.com`, с A-записью на тот же сервер.
 - Уже работающий TURN-сервер и его `static-auth-secret`.
 
 ## 2. Брандмауэр
@@ -49,10 +52,16 @@ sudo chmod 600 .env
 | `API_DOMAIN` | домен API, например `api.example.com` |
 | `POSTGRES_PASSWORD` | `openssl rand -hex 32` |
 | `JWT_KEY` | `openssl rand -hex 32`, ключ подписи токенов входа |
+| `FILES_DOMAIN` | домен файлов, например `files.example.com` |
+| `STORAGE_ACCESS_KEY` | `openssl rand -hex 16`, имя сервера в хранилище файлов |
+| `STORAGE_SECRET_KEY` | `openssl rand -hex 32`, ключ подписи ссылок на файлы |
 | `TURN_HOST` | домен TURN-сервера |
 | `TURN_SECRET` | `static-auth-secret` из `turnserver.conf` |
 
 `JWT_KEY` не меняйте без нужды: после смены всем придётся войти заново. `.env` в git не попадает.
+
+Файлы из чатов скачиваются только по ссылкам, которые сервер выдаёт после проверки прав: ссылка ведёт на один файл,
+подписана `STORAGE_SECRET_KEY` и перестаёт работать через 10 минут. Без правильной подписи хранилище отвечает `403`.
 
 ### Ключ Firebase для push-уведомлений
 
@@ -83,7 +92,7 @@ sudo docker compose logs -f server caddy
 
 Первая сборка образа занимает несколько минут. При первом запуске сервер сам создаст таблицы в базе. В журнале
 `server` будет одна строка `fail` про `__EFMigrationsHistory`: так EF проверяет, есть ли уже таблица миграций, это не
-ошибка. Caddy в журнале сообщит, что получил сертификат для `API_DOMAIN`.
+ошибка. Caddy в журнале сообщит, что получил сертификаты для `API_DOMAIN` и `FILES_DOMAIN`.
 
 Строк `push notifications are off` в журнале `server` быть не должно. Если есть, сервер не нашёл или не смог прочитать
 `firebase.json`: проверьте владельца файла из шага 3.
@@ -97,6 +106,13 @@ curl -i https://api.example.com/api/chats
 ```
 
 Ожидаемый ответ — `401 Unauthorized`: сервер работает, сертификат действителен, а без входа данные не отдаются.
+И для файлов:
+
+```bash
+curl -i https://files.example.com/
+```
+
+Ожидаемый ответ — `403 Forbidden` с `AccessDenied`: хранилище работает и без подписанной ссылки ничего не отдаёт.
 
 Затем полная проверка:
 
@@ -150,10 +166,21 @@ sudo docker compose up -d --build
 
 Новые миграции базы применятся при запуске. Данные PostgreSQL хранятся в томе `postgres` и при обновлении не теряются.
 
+Серверу, развёрнутому до появления файлов, сначала нужны `FILES_DOMAIN`, `STORAGE_ACCESS_KEY` и `STORAGE_SECRET_KEY` в
+`.env` (см. шаг 3) и A-запись домена файлов. Без них `docker compose` остановится и назовёт недостающую настройку.
+
 ## 9. Резервная копия базы
 
 ```bash
 sudo docker compose exec postgres pg_dump -U minu minu | gzip > minu-$(date +%F).sql.gz
+```
+
+Файлы хранятся в томе `seaweedfs`. Копия:
+
+```bash
+sudo docker compose stop seaweedfs
+sudo docker run --rm -v deploy_seaweedfs:/data -v "$PWD":/backup alpine tar czf /backup/files-$(date +%F).tar.gz -C /data .
+sudo docker compose start seaweedfs
 ```
 
 Храните копии не на этом же сервере.

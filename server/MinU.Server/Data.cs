@@ -77,8 +77,27 @@ public class RefreshToken
     public bool Replaced { get; set; }
 }
 
+/// <summary>
+/// A file someone uploaded; the bytes live in <see cref="IFileStorage"/> under <see cref="Key"/>.
+/// Who may download it follows from <see cref="ChatId"/>: the chat's members.
+/// </summary>
+public class StoredFile
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OwnerId { get; set; }
+    public Guid? ChatId { get; set; }
+    public required string Name { get; set; }
+    public required string ContentType { get; set; }
+    public long Size { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>The object's name in storage: random, so one can't be guessed from another.</summary>
+    public string Key => Id.ToString("N");
+}
+
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public DbSet<StoredFile> Files => Set<StoredFile>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Chat> Chats => Set<Chat>();
@@ -132,6 +151,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             device.HasIndex(x => x.Token).IsUnique();
             device.HasIndex(x => x.UserId);
             device.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<StoredFile>(file =>
+        {
+            file.Property(x => x.Name).HasMaxLength(Limits.FileNameMax);
+            file.Property(x => x.ContentType).HasMaxLength(128);
+            file.HasIndex(x => x.ChatId);
+            file.HasIndex(x => x.OwnerId);
+            file.Ignore(x => x.Key);
         });
     }
 }

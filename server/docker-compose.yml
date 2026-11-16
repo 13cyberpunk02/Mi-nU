@@ -1,4 +1,4 @@
-# Local development database. Port 5433 avoids clashing with an installed PostgreSQL.
+# Local development database and file storage. Port 5433 avoids clashing with an installed PostgreSQL.
 services:
   postgres:
     image: postgres:17
@@ -11,5 +11,23 @@ services:
     volumes:
       - minu-postgres:/var/lib/postgresql/data
 
+  # S3-compatible storage for files, as in the deployment. Development keys only, see appsettings.Development.json.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.54
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=64
+    ports:
+      - "127.0.0.1:8333:8333"
+    configs:
+      - source: s3
+        target: /etc/seaweedfs/s3.json
+    volumes:
+      - minu-seaweedfs:/data
+
+configs:
+  s3:
+    content: |
+      {"identities":[{"name":"minu","credentials":[{"accessKey":"minu_dev","secretKey":"minu_dev_secret"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+
 volumes:
   minu-postgres:
+  minu-seaweedfs:

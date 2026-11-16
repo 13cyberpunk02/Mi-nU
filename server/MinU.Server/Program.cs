@@ -17,6 +17,17 @@ builder.Services.AddSingleton<CallRegistry>();
 builder.Services.AddSingleton<PresenceTracker>();
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
+// Files need an S3 endpoint (SeaweedFS in the deployment); without one the app works, only without files.
+var storage = config.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
+builder.Services.AddSingleton(storage);
+builder.Services.AddSingleton<IFileStorage>(services =>
+{
+    if (storage.ServiceUrl is { Length: > 0 })
+        return new S3FileStorage(storage);
+    services.GetRequiredService<ILogger<NoFileStorage>>().LogWarning("Storage:ServiceUrl is not set: files are off");
+    return new NoFileStorage();
+});
+
 // Push needs the Firebase service account key; without it the app works, only without notifications.
 builder.Services.AddSingleton<PushQueue>();
 builder.Services.AddHostedService<PushWorker>();
@@ -114,6 +125,7 @@ app.UseAuthorization();
 
 app.MapAuth();
 app.MapApi();
+app.MapFiles();
 app.MapHub<ChatHub>("/hubs/chat");
 
 app.Run();

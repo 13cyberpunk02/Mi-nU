@@ -4,8 +4,26 @@ using Npgsql;
 
 namespace MinU.Server;
 
-public class ChatService(AppDbContext db)
+public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatService> logger)
 {
+    // The rows go for certain; a byte left behind in storage is only wasted space, so a failure there is just logged.
+    async Task DeleteFilesAsync(Guid chatId)
+    {
+        var files = await db.Files.Where(file => file.ChatId == chatId).ToListAsync();
+        await db.Files.Where(file => file.ChatId == chatId).ExecuteDeleteAsync();
+        foreach (var file in files)
+        {
+            try
+            {
+                await storage.DeleteAsync(file.Key, CancellationToken.None);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                logger.LogWarning(e, "Could not delete file {Key} of deleted chat {ChatId}", file.Key, chatId);
+            }
+        }
+    }
+
     public Task<bool> IsMemberAsync(Guid chatId, Guid userId) =>
         db.ChatMembers.AnyAsync(x => x.ChatId == chatId && x.UserId == userId);
 
@@ -163,6 +181,7 @@ public class ChatService(AppDbContext db)
         if (remaining.Count == 0)
         {
             await db.Messages.Where(message => message.ChatId == chatId).ExecuteDeleteAsync();
+            await DeleteFilesAsync(chatId);
             await db.Chats.Where(chat => chat.Id == chatId).ExecuteDeleteAsync();
             return false;
         }
