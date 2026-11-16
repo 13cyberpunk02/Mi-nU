@@ -118,9 +118,12 @@ namespace Mi_nU.Controls
             }
         }
 
+        /// <summary>A photo is opening or open: further taps, such as the rest of a double click, change nothing.</summary>
+        static bool _opening;
+
         async Task OpenAsync()
         {
-            if (Item is not { } item)
+            if (Item is not { } item || _opening || Shell.Current?.CurrentPage is Pages.PhotoPage)
                 return;
             try
             {
@@ -128,7 +131,15 @@ namespace Mi_nU.Controls
                 if (item.File.IsImage)
                 {
                     _image.Source ??= ImageSource.FromFile(path);
-                    await Shell.Current.GoToAsync("photo", new ShellNavigationQueryParameters { ["path"] = path, ["name"] = item.File.Name });
+                    _opening = true;
+                    try
+                    {
+                        await Shell.Current.GoToAsync("photo", new ShellNavigationQueryParameters { ["path"] = path, ["name"] = item.File.Name });
+                    }
+                    finally
+                    {
+                        _opening = false;
+                    }
                 }
                 else
                 {
