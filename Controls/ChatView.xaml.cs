@@ -411,13 +411,13 @@ namespace Mi_nU.Controls
             var sending = row with { State = MessageState.Sending };
             Replace(row, sending);
             if (_outgoing.ContainsKey(row.ClientMessageId))
-                await SendPhotosAsync(_chat, sending);
+                await SendFilesAsync(_chat, sending);
             else
                 await SendAsync(_chat, sending);
         }
 
-        /// <summary>A picked photo on its way: kept with what is known of it, so a retry uploads only what didn't make it.</summary>
-        sealed class OutgoingPhoto(byte[] bytes, string name, string contentType, (int Width, int Height)? size, string localPath)
+        /// <summary>A picked file on its way: kept with what is known of it, so a retry uploads only what didn't make it.</summary>
+        sealed class OutgoingFile(byte[] bytes, string name, string contentType, (int Width, int Height)? size, string localPath)
         {
             public byte[] Bytes => bytes;
             public string Name => name;
@@ -427,16 +427,29 @@ namespace Mi_nU.Controls
             public FileDto? Uploaded { get; set; }
         }
 
-        /// <summary>Photos of messages not sent yet, by the message's client id.</summary>
-        readonly Dictionary<Guid, List<OutgoingPhoto>> _outgoing = [];
+        /// <summary>Files of messages not sent yet, by the message's client id.</summary>
+        readonly Dictionary<Guid, List<OutgoingFile>> _outgoing = [];
 
         async void OnAttachClicked(object? sender, EventArgs e)
         {
             if (_chat is not { } chat)
                 return;
 
-            var photos = await PickPhotosAsync();
-            if (photos.Count == 0 || _chat?.Id != chat.Id)
+            const string photo = "Фото";
+            const string camera = "Камера";
+            const string file = "Файл";
+            var choices = DeviceInfo.Platform == DevicePlatform.Android && MediaPicker.Default.IsCaptureSupported
+                ? new[] { photo, camera, file }
+                : [photo, file];
+            var choice = await Shell.Current.DisplayActionSheetAsync("Прикрепить", "Отмена", null, choices);
+            var files = choice switch
+            {
+                photo => await PickMediaAsync(useCamera: false),
+                camera => await PickMediaAsync(useCamera: true),
+                file => await PickFilesAsync(),
+                _ => [],
+            };
+            if (files.Count == 0 || _chat?.Id != chat.Id)
                 return;
 
             // Whatever was typed goes with them as the caption.
@@ -446,24 +459,24 @@ namespace Mi_nU.Controls
             MessageEntry.Text = "";
             var row = new MessageRow(null, Guid.NewGuid(), caption, _auth.Session?.User.DisplayName ?? "", false, true, DateTimeOffset.UtcNow, MessageState.Sending)
             {
-                Attachments = photos
-                    .Select(photo => new AttachmentItem(
-                        new FileDto(Guid.Empty, photo.Name, photo.ContentType, photo.Bytes.Length, photo.Size?.Width, photo.Size?.Height),
-                        photo.LocalPath))
+                Attachments = files
+                    .Select(outgoing => new AttachmentItem(
+                        new FileDto(Guid.Empty, outgoing.Name, outgoing.ContentType, outgoing.Bytes.Length, outgoing.Size?.Width, outgoing.Size?.Height),
+                        outgoing.LocalPath))
                     .ToList(),
             };
-            _outgoing[row.ClientMessageId] = photos;
+            _outgoing[row.ClientMessageId] = files;
             _rows.Add(row);
             Relink(_rows.Count - 1);
             ScrollToEnd();
-            await SendPhotosAsync(chat, row);
+            await SendFilesAsync(chat, row);
         }
 
         /// <summary>
-        /// Photos from the gallery, or on a phone from the camera too. Already made smaller, turned upright and stripped of
+        /// Photos from the gallery, or on a phone from the camera. Already made smaller, turned upright and stripped of
         /// their metadata by the picker: a photo's EXIF can hold where it was taken.
         /// </summary>
-        async Task<List<OutgoingPhoto>> PickPhotosAsync()
+        async Task<List<OutgoingFile>> PickMediaAsync(bool useCamera)
         {
             var options = new MediaPickerOptions
             {
@@ -479,16 +492,6 @@ namespace Mi_nU.Controls
             List<FileResult> picked;
             try
             {
-                const string gallery = "Галерея";
-                const string camera = "Камера";
-                var useCamera = false;
-                if (DeviceInfo.Platform == DevicePlatform.Android && MediaPicker.Default.IsCaptureSupported)
-                {
-                    var choice = await Shell.Current.DisplayActionSheetAsync("Прикрепить", "Отмена", null, gallery, camera);
-                    if (choice is not (gallery or camera))
-                        return [];
-                    useCamera = choice == camera;
-                }
                 // Cancelled pickers give null or nothing.
                 picked = useCamera
                     ? await MediaPicker.Default.CapturePhotoAsync(options) is { } shot ? [shot] : []
@@ -511,48 +514,115 @@ namespace Mi_nU.Controls
                 return [];
             }
 
-            var photos = new List<OutgoingPhoto>();
+            return await ReadAsync(picked, "photo.jpg");
+        }
+
+        /// <summary>Any files, sent as they are: documents, archives, or a photo at its full size.</summary>
+        async Task<List<OutgoingFile>> PickFilesAsync()
+        {
+            List<FileResult> picked;
+            try
+            {
+                picked = (await FilePicker.Default.PickMultipleAsync(new PickOptions { PickerTitle = "Файлы" }) ?? [])
+                    .Where(result => result is not null).ToList()!;
+            }
+            catch (PermissionException)
+            {
+                ShowError("Нет доступа к файлам. Разрешите его в настройках.");
+                return [];
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                ShowError("Не удалось открыть выбор файлов.");
+                return [];
+            }
+            return await ReadAsync(picked, "file");
+        }
+
+        /// <summary>
+        /// The picked files, read and copied aside: the picker's own copies may go away before the upload is done.
+        /// Too many or too large are left out with a word about it.
+        /// </summary>
+        async Task<List<OutgoingFile>> ReadAsync(List<FileResult> picked, string fallbackName)
+        {
+            if (picked.Count > AttachmentLimits.PerMessage)
+                ShowError($"Можно отправить до {AttachmentLimits.PerMessage} файлов за раз; остальные не отправлены.");
+
+            var files = new List<OutgoingFile>();
             var folder = Path.Combine(FileSystem.CacheDirectory, "outgoing");
             Directory.CreateDirectory(folder);
-            foreach (var result in picked.Where(result => result is not null).Take(AttachmentLimits.PerMessage))
+            foreach (var result in picked.Take(AttachmentLimits.PerMessage))
             {
+                var name = string.IsNullOrWhiteSpace(result.FileName) ? fallbackName : result.FileName;
                 byte[] bytes;
-                await using (var stream = await result.OpenReadAsync())
-                using (var memory = new MemoryStream())
+                try
                 {
+                    await using var stream = await result.OpenReadAsync();
+                    if (stream.CanSeek && stream.Length > Limits.FileMax)
+                    {
+                        ShowError($"«{name}» больше {Limits.FileMax / 1024 / 1024} МБ и не отправлен.");
+                        continue;
+                    }
+                    using var memory = new MemoryStream();
                     await stream.CopyToAsync(memory);
                     bytes = memory.ToArray();
                 }
-                if (bytes.Length is 0 or > (int)Limits.FileMax)
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    ShowError($"Не удалось прочитать «{name}».");
                     continue;
+                }
+                if (bytes.Length == 0 || bytes.Length > Limits.FileMax)
+                {
+                    ShowError(bytes.Length == 0 ? $"«{name}» пустой и не отправлен." : $"«{name}» больше {Limits.FileMax / 1024 / 1024} МБ и не отправлен.");
+                    continue;
+                }
 
-                var name = string.IsNullOrWhiteSpace(result.FileName) ? "photo.jpg" : result.FileName;
-                var contentType = string.IsNullOrWhiteSpace(result.ContentType) ? "image/jpeg" : result.ContentType;
-                // The picker's own file may go away; this copy shows the photo until it is sent.
+                var contentType = string.IsNullOrWhiteSpace(result.ContentType) || result.ContentType == "application/octet-stream"
+                    ? ContentTypeOf(name)
+                    : result.ContentType;
                 var local = Path.Combine(folder, Guid.NewGuid().ToString("N") + Path.GetExtension(name));
                 await File.WriteAllBytesAsync(local, bytes);
-                photos.Add(new OutgoingPhoto(bytes, name, contentType, ImageSize.Of(bytes), local));
+                files.Add(new OutgoingFile(bytes, name, contentType, contentType.StartsWith("image/") ? ImageSize.Of(bytes) : null, local));
             }
-            return photos;
+            return files;
         }
 
-        async Task SendPhotosAsync(ChatDto chat, MessageRow row)
+        // The system doesn't always say, Windows' picker for one; the server checks pictures again anyway.
+        static string ContentTypeOf(string name) => Path.GetExtension(name).ToLowerInvariant() switch
         {
-            if (!_outgoing.TryGetValue(row.ClientMessageId, out var photos))
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".heic" => "image/heic",
+            ".mp4" => "video/mp4",
+            ".mov" => "video/quicktime",
+            ".webm" => "video/webm",
+            ".mp3" => "audio/mpeg",
+            ".m4a" => "audio/mp4",
+            ".ogg" or ".oga" => "audio/ogg",
+            ".wav" => "audio/wav",
+            _ => "application/octet-stream",
+        };
+
+        async Task SendFilesAsync(ChatDto chat, MessageRow row)
+        {
+            if (!_outgoing.TryGetValue(row.ClientMessageId, out var files))
                 return;
             try
             {
-                foreach (var photo in photos.Where(photo => photo.Uploaded is null))
+                foreach (var outgoing in files.Where(outgoing => outgoing.Uploaded is null))
                 {
-                    var file = await _api.UploadFileAsync(chat.Id, photo.Bytes, photo.Name, photo.ContentType, photo.Size?.Width, photo.Size?.Height);
+                    var file = await _api.UploadFileAsync(chat.Id, outgoing.Bytes, outgoing.Name, outgoing.ContentType, outgoing.Size?.Width, outgoing.Size?.Height);
                     // This device has the bytes already: they are never downloaded back.
-                    _files.Put(file, photo.Bytes);
-                    photo.Uploaded = file;
+                    _files.Put(file, outgoing.Bytes);
+                    outgoing.Uploaded = file;
                 }
-                var sent = await _hub.SendAttachmentsAsync(chat.Id, row.Text, row.ClientMessageId, photos.Select(photo => photo.Uploaded!.Id).ToList());
+                var sent = await _hub.SendAttachmentsAsync(chat.Id, row.Text, row.ClientMessageId, files.Select(outgoing => outgoing.Uploaded!.Id).ToList());
                 _outgoing.Remove(row.ClientMessageId);
-                foreach (var photo in photos)
-                    TryDelete(photo.LocalPath);
+                foreach (var outgoing in files)
+                    TryDelete(outgoing.LocalPath);
                 if (_chat?.Id == chat.Id)
                     Merge(sent);
             }

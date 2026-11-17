@@ -123,33 +123,37 @@ namespace Mi_nU.Controls
 
         async Task OpenAsync()
         {
-            if (Item is not { } item || _opening || Shell.Current?.CurrentPage is Pages.PhotoPage)
+            if (Item is not { } item || _opening || Shell.Current is not { } shell || shell.CurrentPage is Pages.PhotoPage)
                 return;
+            _opening = true;
             try
             {
-                var path = item.LocalPath ?? await Cache.GetAsync(item.File);
                 if (item.File.IsImage)
                 {
+                    var path = item.LocalPath ?? await Cache.GetAsync(item.File);
                     _image.Source ??= ImageSource.FromFile(path);
-                    _opening = true;
-                    try
-                    {
-                        await Shell.Current.GoToAsync("photo", new ShellNavigationQueryParameters { ["path"] = path, ["name"] = item.File.Name });
-                    }
-                    finally
-                    {
-                        _opening = false;
-                    }
+                    await shell.GoToAsync("photo", new ShellNavigationQueryParameters { ["path"] = path, ["name"] = item.File.Name });
                 }
                 else
                 {
+                    // A large file takes a while to arrive; the line says so rather than seeming to ignore the tap.
+                    _fileSize.Text = "Загрузка…";
+                    var path = item.LocalPath ?? await Cache.GetAsync(item.File);
+                    _fileSize.Text = SizeText(item.File.Size);
                     // Opened by whatever the system has for the type.
                     await Launcher.Default.OpenAsync(new OpenFileRequest(item.File.Name, new ReadOnlyFile(path)));
                 }
             }
             catch (ApiException)
             {
-                _placeholder.Text = Themes.Icons.ImageOff;
+                if (item.File.IsImage)
+                    _placeholder.Text = Themes.Icons.ImageOff;
+                else
+                    _fileSize.Text = "Не загрузилось · нажмите ещё раз";
+            }
+            finally
+            {
+                _opening = false;
             }
         }
 

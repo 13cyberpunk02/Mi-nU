@@ -20,6 +20,8 @@ builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 // Files need an S3 endpoint (SeaweedFS in the deployment); without one the app works, only without files.
 var storage = config.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
 builder.Services.AddSingleton(storage);
+builder.Services.AddSingleton<FileCleanup>();
+builder.Services.AddHostedService(services => services.GetRequiredService<FileCleanup>());
 builder.Services.AddSingleton<IFileStorage>(services =>
 {
     if (storage.ServiceUrl is { Length: > 0 })

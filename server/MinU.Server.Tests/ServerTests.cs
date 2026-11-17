@@ -755,6 +755,37 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
     }
 
     [Fact]
+    public async Task Files_never_sent_are_removed_after_a_day_and_sent_ones_stay()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var chat = await alice.DirectChatWithAsync(bob);
+        var sent = await UploadAsync(alice, chat.Id, Png, "sent.png", "image/png");
+        await alice.Hub.InvokeAsync<MessageDto>("SendAttachments", chat.Id, "", Guid.NewGuid(), new[] { sent.Id });
+        var abandoned = await UploadAsync(alice, chat.Id, Png, "abandoned.png", "image/png");
+        var fresh = await UploadAsync(alice, chat.Id, Png, "fresh.png", "image/png");
+
+        using (var scope = server.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            // Uploaded two days ago and never sent, as when the app closed halfway.
+            await db.Files.Where(x => x.Id == abandoned.Id || x.Id == sent.Id)
+                .ExecuteUpdateAsync(set => set.SetProperty(x => x.CreatedAt, DateTimeOffset.UtcNow.AddDays(-2)));
+        }
+
+        var cleanup = server.Services.GetRequiredService<FileCleanup>();
+        Assert.True(await cleanup.RemoveUnsentAsync(DateTimeOffset.UtcNow - FileCleanup.UnsentLifetime, CancellationToken.None) >= 1);
+
+        using var check = server.Services.CreateScope();
+        var left = await check.ServiceProvider.GetRequiredService<AppDbContext>().Files
+            .Where(x => x.Id == sent.Id || x.Id == abandoned.Id || x.Id == fresh.Id).Select(x => x.Id).ToListAsync();
+        Assert.Equal(new HashSet<Guid> { sent.Id, fresh.Id }, left.ToHashSet());
+        var storage = server.Services.GetRequiredService<IFileStorage>();
+        Assert.Equal(HttpStatusCode.NotFound, (await Storage.GetAsync(storage.LinkFor(abandoned.Id.ToString("N"), TimeSpan.FromMinutes(1), null))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Storage.GetAsync(storage.LinkFor(sent.Id.ToString("N"), TimeSpan.FromMinutes(1), null))).StatusCode);
+    }
+
+    [Fact]
     public async Task A_deleted_group_takes_its_files_along()
     {
         var alice = await server.RegisterAsync("alice");

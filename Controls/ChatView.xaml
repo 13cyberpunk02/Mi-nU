@@ -204,7 +204,7 @@
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
                 <!-- Photos: the text typed meanwhile goes along as their caption. -->
                 <Button x:Name="AttachButton" AutomationId="ChatAttach" Text="{x:Static themes:Icons.Paperclip}" Style="{StaticResource IconButton}"
-                        SemanticProperties.Description="Прикрепить фото" VerticalOptions="End" Clicked="OnAttachClicked" />
+                        SemanticProperties.Description="Прикрепить фото или файл" VerticalOptions="End" Clicked="OnAttachClicked" />
                 <Border Grid.Column="1" Style="{StaticResource FilledField}" StrokeShape="RoundRectangle 22">
                     <Entry x:Name="MessageEntry" AutomationId="ChatInput" Placeholder="Сообщение" Keyboard="Chat" ReturnType="Send" Completed="OnSendClicked" />
                 </Border>
