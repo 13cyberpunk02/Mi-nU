@@ -10,7 +10,9 @@ public record LoginRequest(string UserName, string Password);
 public record AuthResponse(string Token, DateTimeOffset ExpiresAt, UserDto User, string RefreshToken, DateTimeOffset RefreshExpiresAt);
 public record RefreshRequest(string RefreshToken);
 
-public record UserDto(Guid Id, string UserName, string DisplayName);
+/// <summary><see cref="AvatarId"/> is the profile picture: a file fetched like any other, through a short-lived link.</summary>
+public record UserDto(Guid Id, string UserName, string DisplayName, Guid? AvatarId = null);
+public record UpdateProfileRequest(string DisplayName);
 
 public record CreateDirectChatRequest(Guid UserId);
 public record CreateGroupChatRequest(string Title, IReadOnlyList<Guid> MemberIds);
@@ -132,6 +134,8 @@ public static class Limits
     public const int UserNameMin = 3;
     public const int UserNameMax = 32;
     public const int DisplayNameMax = 64;
+    /// <summary>The largest profile picture; the app sends a small square one anyway.</summary>
+    public const long AvatarMax = 5L * 1024 * 1024;
     public const int PasswordMin = 8;
     public const int ChatTitleMax = 100;
     public const int GroupMembersMax = 256;
@@ -164,6 +168,8 @@ public interface IChatClient
     Task ChatUpdated(ChatDto chat);
     /// <summary>The user left the group or was removed from it, on this device or another.</summary>
     Task ChatRemoved(Guid chatId);
+    /// <summary>Someone who shares a chat with this user, or the user on another device, changed their name or picture.</summary>
+    Task UserUpdated(UserDto user);
     Task CallInvited(CallInvite invite);
     Task CallParticipantJoined(CallParticipant participant);
     Task CallParticipantLeft(CallParticipant participant);

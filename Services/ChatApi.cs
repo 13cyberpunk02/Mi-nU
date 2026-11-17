@@ -25,6 +25,8 @@ namespace Mi_nU.Services
     [JsonSerializable(typeof(AddMembersRequest))]
     [JsonSerializable(typeof(FileDto))]
     [JsonSerializable(typeof(FileLinkDto))]
+    [JsonSerializable(typeof(UserDto))]
+    [JsonSerializable(typeof(UpdateProfileRequest))]
     internal partial class ChatJsonContext : JsonSerializerContext;
 
     public class ChatApi(AuthService auth)
@@ -55,6 +57,28 @@ namespace Mi_nU.Services
         /// <summary>A short-lived link to download the file from storage, for a member of its chat.</summary>
         public Task<FileLinkDto> GetFileLinkAsync(Guid fileId, CancellationToken cancel = default) =>
             SendAsync(HttpMethod.Get, $"/api/files/{fileId}/link", null, ChatJsonContext.Default.FileLinkDto, cancel);
+
+        public Task<UserDto> UpdateProfileAsync(string displayName) =>
+            SendAsync(HttpMethod.Put, "/api/me",
+                JsonContent.Create(new UpdateProfileRequest(displayName), ChatJsonContext.Default.UpdateProfileRequest),
+                ChatJsonContext.Default.UserDto);
+
+        /// <summary>A new profile picture; the old one is removed from storage.</summary>
+        public Task<UserDto> SetAvatarAsync(byte[] bytes, string contentType, int? width, int? height)
+        {
+            var form = new MultipartFormDataContent();
+            var file = new ByteArrayContent(bytes);
+            file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            form.Add(file, "file", contentType == "image/png" ? "avatar.png" : "avatar.jpg");
+            if (width is { } w)
+                form.Add(new StringContent(w.ToString(System.Globalization.CultureInfo.InvariantCulture)), "width");
+            if (height is { } h)
+                form.Add(new StringContent(h.ToString(System.Globalization.CultureInfo.InvariantCulture)), "height");
+            return SendAsync(HttpMethod.Put, "/api/me/avatar", form, ChatJsonContext.Default.UserDto, default, _uploads);
+        }
+
+        public Task<UserDto> RemoveAvatarAsync() =>
+            SendAsync(HttpMethod.Delete, "/api/me/avatar", null, ChatJsonContext.Default.UserDto);
 
         /// <summary>STUN and TURN servers with fresh credentials; fetched for every call, so they never expire mid-call.</summary>
         public Task<IceServersDto> GetIceServersAsync() =>

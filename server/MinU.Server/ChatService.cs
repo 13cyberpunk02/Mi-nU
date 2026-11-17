@@ -375,7 +375,7 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
         return new ChatDto(chat.Id, chat.Kind, title, members, lastDto, unread, readUpTo, chat.OwnerId);
     }
 
-    public static UserDto ToDto(User user) => new(user.Id, user.UserName, user.DisplayName);
+    public static UserDto ToDto(User user) => new(user.Id, user.UserName, user.DisplayName, user.AvatarFileId);
 
     static MessageDto ToDto(Message message) => ToDto(message, null);
 

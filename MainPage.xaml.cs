@@ -12,6 +12,8 @@ namespace Mi_nU
     {
         public string Title => Chat.Title;
         public string Seed => Chat.Kind == ChatKind.Direct ? Chat.Title : Chat.Id.ToString();
+        /// <summary>A direct chat shows the other person's picture; a group has none yet.</summary>
+        public Guid? PictureId => Chat.Kind == ChatKind.Direct ? Chat.Members.FirstOrDefault(member => member.Id != Viewer)?.AvatarId : null;
         public string Preview => Chat.LastMessage switch
         {
             null => Chat.Kind == ChatKind.Group ? $"Участников: {Chat.Members.Count}" : "Сообщений пока нет",
@@ -102,6 +104,8 @@ namespace Mi_nU
             presence.Changed += OnPresenceChanged;
             hub.ChatUpdated += chat => MainThread.BeginInvokeOnMainThread(() => OnChatUpdated(chat));
             hub.ChatRemoved += chatId => MainThread.BeginInvokeOnMainThread(() => OnChatRemoved(chatId));
+            hub.UserUpdated += user => MainThread.BeginInvokeOnMainThread(async () => await OnUserUpdatedAsync(user));
+            auth.ProfileChanged += ShowOwnAvatar;
             ChatList.ItemsSource = _chats;
             SizeChanged += (_, _) => UpdateLayout();
             Current = this;
@@ -157,6 +161,7 @@ namespace Mi_nU
         {
             base.OnAppearing();
             _visible = true;
+            ShowOwnAvatar();
             _hub.MessageReceived += OnMessageReceived;
             _hub.ChatCreated += OnChatCreated;
             _hub.ChatRead += OnChatRead;
@@ -393,17 +398,38 @@ namespace Mi_nU
 
         async void OnNewChatClicked(object? sender, EventArgs e) => await Shell.Current.GoToAsync("newchat");
 
-        async void OnProfileClicked(object? sender, EventArgs e)
-        {
-            const string logout = "Выйти";
-            var name = _auth.Session?.User.DisplayName ?? "";
-            if (await DisplayActionSheetAsync(name, "Отмена", logout) != logout)
-                return;
+        async void OnProfileClicked(object? sender, EventArgs e) => await Shell.Current.GoToAsync("profile");
 
-            // While still signed in: the server must know whose notifications to stop.
-            await _push.UnregisterAsync();
-            // AppShell returns to the sign-in screen when the session ends.
-            await _auth.LogoutAsync();
+        void ShowOwnAvatar()
+        {
+            var me = _auth.Session?.User;
+            ProfileAvatar.Name = me?.DisplayName ?? "";
+            ProfileAvatar.Seed = me?.DisplayName ?? "";
+            ProfileAvatar.PictureId = me?.AvatarId;
+        }
+
+        /// <summary>
+        /// Someone changed their name or picture: every chat they're in shows the new one, a direct chat by its title too.
+        /// The user's own change also updates the session, also when it came from another device.
+        /// </summary>
+        async Task OnUserUpdatedAsync(UserDto user)
+        {
+            if (user.Id == _auth.Session?.User.Id)
+                await _auth.UpdateProfileAsync(user);
+
+            for (var i = 0; i < _chats.Count; i++)
+            {
+                var chat = _chats[i].Chat;
+                if (chat.Members.All(member => member.Id != user.Id))
+                    continue;
+                var members = chat.Members.Select(member => member.Id == user.Id ? user : member).ToList();
+                var title = chat.Kind == ChatKind.Direct && user.Id != _auth.Session?.User.Id ? user.DisplayName : chat.Title;
+                chat = chat with { Members = members, Title = title };
+                _chats[i] = Row(chat);
+                if (Detail.ChatId == chat.Id)
+                    Detail.Update(chat);
+            }
+            ApplySearch();
         }
     }
 }

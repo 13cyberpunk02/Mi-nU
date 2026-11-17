@@ -31,7 +31,7 @@
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="pages:GroupUserRow">
                     <Grid ColumnDefinitions="44,*,Auto" ColumnSpacing="12" Padding="8,8">
-                        <controls:Avatar Name="{Binding Name}" Seed="{Binding Name}" Size="44" />
+                        <controls:Avatar Name="{Binding Name}" Seed="{Binding Name}" PictureId="{Binding User.AvatarId}" Size="44" />
                         <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
                             <Label Text="{Binding Name}" Style="{StaticResource Name}" />
                             <Label Text="{Binding UserName}" Style="{StaticResource Caption}" />

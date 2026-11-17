@@ -48,6 +48,7 @@ namespace Mi_nU
             builder.Services.AddTransient<Pages.NewGroupPage>();
             builder.Services.AddTransient<Pages.GroupInfoPage>();
             builder.Services.AddTransient<Pages.PhotoPage>();
+            builder.Services.AddTransient<Pages.ProfilePage>();
             builder.Services.AddTransient<Pages.StartupPage>();
             builder.Services.AddTransient<Pages.LoginPage>();
             builder.Services.AddTransient<Pages.RegisterPage>();

@@ -48,8 +48,14 @@ namespace Mi_nU.Services
         /// <summary>How long someone stays marked after they go quiet, so the mark doesn't flicker between words.</summary>
         static readonly TimeSpan SpeakingHold = TimeSpan.FromMilliseconds(800);
 
+        readonly AuthService _auth;
+
+        /// <summary>The user's own picture, for their tile in a call.</summary>
+        public Guid? SelfAvatarId => _auth.Session?.User.AvatarId;
+
         public CallService(AuthService auth, ChatHubClient hub, ChatApi api)
         {
+            _auth = auth;
             _hub = hub;
             _api = api;
             hub.CallInvited += invite => OnMainThread(() => OnInvited(invite));
@@ -388,7 +394,10 @@ namespace Mi_nU.Services
                 connection.AddTrack(LocalVideo);
 
             var peer = new CallPeer(participant.ParticipantId, participant.User.DisplayName, connection,
-                (type, payload) => _hub.SendCallSignalAsync(participant.CallId, participant.ParticipantId, type, payload));
+                (type, payload) => _hub.SendCallSignalAsync(participant.CallId, participant.ParticipantId, type, payload))
+            {
+                AvatarId = participant.User.AvatarId,
+            };
             peer.Changed += () => OnMainThread(() => OnPeerChanged(peer));
             _peers.Add(peer.Id, peer);
 
@@ -602,6 +611,7 @@ namespace Mi_nU.Services
 
         public string Id { get; }
         public string Name { get; }
+        public Guid? AvatarId { get; init; }
         public VideoTrack? Video { get; private set; }
         public PeerConnectionState State { get; private set; } = PeerConnectionState.New;
 

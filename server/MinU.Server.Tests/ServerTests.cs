@@ -785,6 +785,68 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         Assert.Equal(HttpStatusCode.OK, (await Storage.GetAsync(storage.LinkFor(sent.Id.ToString("N"), TimeSpan.FromMinutes(1), null))).StatusCode);
     }
 
+    static async Task<HttpResponseMessage> PutAvatarAsync(Client client, byte[] bytes, string contentType)
+    {
+        using var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        form.Add(file, "file", "me.png");
+        return await client.Http.PutAsync("/api/me/avatar", form);
+    }
+
+    [Fact]
+    public async Task A_new_picture_and_name_reach_contacts_and_the_old_picture_goes()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var stranger = await server.RegisterAsync("stranger");
+        await alice.DirectChatWithAsync(bob);
+
+        var bobSaw = bob.Next<UserDto>("UserUpdated");
+        var response = await PutAvatarAsync(alice, Png, "image/png");
+        response.EnsureSuccessStatusCode();
+        var first = (await response.Content.ReadFromJsonAsync<UserDto>())!;
+        Assert.NotNull(first.AvatarId);
+        Assert.Equal(first.AvatarId, (await bobSaw).AvatarId);
+
+        // Shown wherever its owner is, so anyone signed in may fetch it, a stranger from a search included.
+        var link = (await stranger.Http.GetFromJsonAsync<FileLinkDto>($"/api/files/{first.AvatarId}/link"))!;
+        Assert.Equal(HttpStatusCode.OK, (await Storage.GetAsync(link.Url)).StatusCode);
+
+        var second = (await (await PutAvatarAsync(alice, Png, "image/png")).Content.ReadFromJsonAsync<UserDto>())!;
+        Assert.NotEqual(first.AvatarId, second.AvatarId);
+        // The replaced one is gone, link and bytes.
+        Assert.Equal(HttpStatusCode.NotFound, (await stranger.Http.GetAsync($"/api/files/{first.AvatarId}/link")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Storage.GetAsync(link.Url)).StatusCode);
+
+        // The daily cleanup of unsent files leaves profile pictures alone.
+        using (var scope = server.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<AppDbContext>().Files.Where(x => x.Id == second.AvatarId)
+                .ExecuteUpdateAsync(set => set.SetProperty(x => x.CreatedAt, DateTimeOffset.UtcNow.AddDays(-5)));
+        await server.Services.GetRequiredService<FileCleanup>().RemoveUnsentAsync(DateTimeOffset.UtcNow.AddDays(-1), CancellationToken.None);
+        Assert.Equal(HttpStatusCode.OK, (await stranger.Http.GetAsync($"/api/files/{second.AvatarId}/link")).StatusCode);
+
+        var renamed = bob.Next<UserDto>("UserUpdated");
+        (await alice.Http.PutAsJsonAsync("/api/me", new UpdateProfileRequest("  Alice Smith "))).EnsureSuccessStatusCode();
+        Assert.Equal("Alice Smith", (await renamed).DisplayName);
+        var chats = (await bob.Http.GetFromJsonAsync<List<ChatDto>>("/api/chats"))!;
+        Assert.Equal("Alice Smith", chats.Single().Title);
+        Assert.Equal(second.AvatarId, chats.Single().Members.Single(x => x.Id == alice.User.Id).AvatarId);
+
+        var removed = bob.Next<UserDto>("UserUpdated");
+        (await alice.Http.DeleteAsync("/api/me/avatar")).EnsureSuccessStatusCode();
+        Assert.Null((await removed).AvatarId);
+    }
+
+    [Fact]
+    public async Task Only_real_pictures_become_profile_pictures()
+    {
+        var alice = await server.RegisterAsync("alice");
+        Assert.Equal(HttpStatusCode.BadRequest, (await PutAvatarAsync(alice, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "image/png")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PutAvatarAsync(alice, "<svg/>"u8.ToArray(), "image/svg+xml")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await alice.Http.PutAsJsonAsync("/api/me", new UpdateProfileRequest("   "))).StatusCode);
+    }
+
     [Fact]
     public async Task A_deleted_group_takes_its_files_along()
     {

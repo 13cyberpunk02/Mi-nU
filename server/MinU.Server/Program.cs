@@ -128,6 +128,7 @@ app.UseAuthorization();
 app.MapAuth();
 app.MapApi();
 app.MapFiles();
+app.MapProfile();
 app.MapHub<ChatHub>("/hubs/chat");
 
 app.Run();

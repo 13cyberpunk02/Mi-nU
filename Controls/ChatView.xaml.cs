@@ -174,6 +174,7 @@ namespace Mi_nU.Controls
             HeaderName.Text = chat.Title;
             HeaderAvatar.Name = chat.Title;
             HeaderAvatar.Seed = new ChatRow(chat).Seed;
+            HeaderAvatar.PictureId = new ChatRow(chat, _auth.Session?.User.Id ?? default).PictureId;
             GroupInfoButton.IsVisible = chat.Kind == ChatKind.Group;
             ShowPresence();
         }

@@ -39,7 +39,7 @@
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="contracts:UserDto">
                     <Grid ColumnDefinitions="52,*" ColumnSpacing="12" Padding="8,10">
-                        <controls:Avatar Name="{Binding DisplayName}" Seed="{Binding DisplayName}" Size="52" />
+                        <controls:Avatar Name="{Binding DisplayName}" Seed="{Binding DisplayName}" PictureId="{Binding AvatarId}" Size="52" />
                         <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
                             <Label Text="{Binding DisplayName}" Style="{StaticResource Name}" />
                             <Label Text="{Binding UserName}" Style="{StaticResource Caption}" />

@@ -39,7 +39,8 @@ public class FileCleanup(IServiceScopeFactory scopes, IFileStorage storage, ILog
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var unsent = await db.Files
-            .Where(file => file.MessageId == null && file.CreatedAt < olderThan)
+            // Files in chats only: a profile picture is in no message and no chat, and must stay.
+            .Where(file => file.ChatId != null && file.MessageId == null && file.CreatedAt < olderThan)
             .Take(500)
             .ToListAsync(cancel);
 

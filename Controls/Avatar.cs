@@ -1,8 +1,13 @@
+using Mi_nU.Services;
 using Microsoft.Maui.Controls.Shapes;
+using MinU.Contracts;
 
 namespace Mi_nU.Controls
 {
-    /// <summary>A round avatar with initials. The tint follows <see cref="Seed"/>, so a person keeps their color everywhere.</summary>
+    /// <summary>
+    /// A round avatar: the person's picture when they have one, initials otherwise and while it loads.
+    /// The tint follows <see cref="Seed"/>, so a person keeps their color everywhere.
+    /// </summary>
     public class Avatar : ContentView
     {
         public static readonly BindableProperty NameProperty =
@@ -11,15 +16,18 @@ namespace Mi_nU.Controls
             BindableProperty.Create(nameof(Seed), typeof(string), typeof(Avatar), "", propertyChanged: (b, _, _) => ((Avatar)b).Update());
         public static readonly BindableProperty SizeProperty =
             BindableProperty.Create(nameof(Size), typeof(double), typeof(Avatar), 48.0, propertyChanged: (b, _, _) => ((Avatar)b).Update());
+        public static readonly BindableProperty PictureIdProperty =
+            BindableProperty.Create(nameof(PictureId), typeof(Guid?), typeof(Avatar), null, propertyChanged: (b, _, _) => ((Avatar)b).LoadPicture());
 
         const int Tints = 6;
         readonly Border _circle;
         readonly Label _initials;
+        readonly Image _picture = new() { Aspect = Aspect.AspectFill, IsVisible = false };
 
         public Avatar()
         {
             _initials = new Label { FontFamily = "InterSemiBold", HorizontalTextAlignment = TextAlignment.Center, VerticalTextAlignment = TextAlignment.Center };
-            _circle = new Border { StrokeThickness = 0, StrokeShape = new Ellipse(), Content = _initials };
+            _circle = new Border { StrokeThickness = 0, StrokeShape = new Ellipse(), Content = new Grid { Children = { _initials, _picture } } };
             Content = _circle;
             Update();
         }
@@ -41,6 +49,13 @@ namespace Mi_nU.Controls
         {
             get => (double)GetValue(SizeProperty);
             set => SetValue(SizeProperty, value);
+        }
+
+        /// <summary>The person's profile picture, see <see cref="UserDto.AvatarId"/>; null shows the initials.</summary>
+        public Guid? PictureId
+        {
+            get => (Guid?)GetValue(PictureIdProperty);
+            set => SetValue(PictureIdProperty, value);
         }
 
         public static string InitialsOf(string name)
@@ -68,5 +83,31 @@ namespace Mi_nU.Controls
             _circle.SetDynamicResource(BackgroundColorProperty, $"AvatarBackground{tint}");
             _initials.SetDynamicResource(Label.TextColorProperty, $"AvatarInk{tint}");
         }
+
+        async void LoadPicture()
+        {
+            var id = PictureId;
+            _picture.IsVisible = false;
+            _picture.Source = null;
+            if (id is not { } pictureId)
+                return;
+
+            try
+            {
+                // A new picture is a new file, so a cached one never goes stale.
+                var path = await Cache.GetAsync(new FileDto(pictureId, "avatar", "image/jpeg", 0));
+                // Reused in a list, the view may show someone else by now.
+                if (PictureId != id)
+                    return;
+                _picture.Source = ImageSource.FromFile(path);
+                _picture.IsVisible = true;
+            }
+            catch (ApiException)
+            {
+                // The initials stay; the next showing tries again.
+            }
+        }
+
+        static FileCache Cache => IPlatformApplication.Current!.Services.GetRequiredService<FileCache>();
     }
 }

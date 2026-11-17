@@ -20,6 +20,7 @@ namespace Mi_nU.Pages
             var video = _calls.Invite?.Video == true;
             CallerLabel.Text = caller;
             CallerAvatar.Name = CallerAvatar.Seed = caller;
+            CallerAvatar.PictureId = _calls.Invite?.Caller.AvatarId;
             KindLabel.Text = video ? "Входящий видеозвонок" : "Входящий звонок";
             AcceptButton.Text = video ? Icons.Video : Icons.Phone;
             AudioOnlyButton.IsVisible = video;

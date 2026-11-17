@@ -74,11 +74,11 @@ namespace Mi_nU.Pages
             var peers = _calls.Peers.ToList();
             // One other person fills the screen with you in the corner; with more, everyone gets a tile.
             var preview = peers.Count <= 1 && _calls.LocalVideo is not null;
-            var shown = peers.Select(peer => (Name: peer.Name, Video: peer.Video, Speaking: _calls.IsSpeaking(peer))).ToList();
+            var shown = peers.Select(peer => (Name: peer.Name, Video: peer.Video, Speaking: _calls.IsSpeaking(peer), Picture: peer.AvatarId)).ToList();
             if (!preview)
-                shown.Add(("Вы", _calls.LocalVideo, _calls.IsSelfSpeaking));
+                shown.Add(("Вы", _calls.LocalVideo, _calls.IsSelfSpeaking, _calls.SelfAvatarId));
             if (shown.Count == 0)
-                shown.Add((_calls.Title, null, false));
+                shown.Add((_calls.Title, null, false, null));
             // Only worth marking among several tiles: one person filling the screen is obviously the one talking.
             var markSpeaker = shown.Count > 1;
 
@@ -93,9 +93,10 @@ namespace Mi_nU.Pages
                     continue;
                 }
 
-                var (who, track, speaking) = shown[i];
+                var (who, track, speaking, picture) = shown[i];
                 name.Text = who;
                 avatar.Name = avatar.Seed = who;
+                avatar.PictureId = picture;
                 video.Track = track;
                 video.IsVisible = track is not null;
                 var marked = markSpeaker && speaking;

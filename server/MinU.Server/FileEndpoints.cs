@@ -86,15 +86,21 @@ public static partial class Endpoints
         // The API authenticates with a bearer token, not cookies, so there is no cross-site form to guard against.
         .DisableAntiforgery();
 
-        // A link for downloading, for whoever may see the file: the members of its chat.
+        // A link for downloading, for whoever may see the file: the members of its chat, or for a profile picture,
+        // anyone signed in, as it shows wherever its owner does.
         api.MapGet("/files/{fileId:guid}/link", async (Guid fileId, ChatService chats, AppDbContext db, IFileStorage storage,
             StorageOptions options, ClaimsPrincipal principal) =>
         {
             if (!storage.IsEnabled)
                 return Results.Json(new { error = "Files are not set up on this server." }, statusCode: StatusCodes.Status503ServiceUnavailable);
             var file = await db.Files.AsNoTracking().FirstOrDefaultAsync(x => x.Id == fileId);
+            if (file is null)
+                return Results.NotFound();
+            var allowed = file.ChatId is { } chatId
+                ? await chats.IsMemberAsync(chatId, UserId(principal))
+                : await db.Users.AnyAsync(user => user.AvatarFileId == file.Id);
             // The same answer for a missing file and someone else's, so ids can't be probed.
-            if (file?.ChatId is not { } chatId || !await chats.IsMemberAsync(chatId, UserId(principal)))
+            if (!allowed)
                 return Results.NotFound();
 
             var lifetime = TimeSpan.FromMinutes(options.LinkMinutes);

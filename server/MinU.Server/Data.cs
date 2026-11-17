@@ -13,6 +13,8 @@ public class User
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     /// <summary>When the user last left the app; null if they haven't since this was recorded.</summary>
     public DateTimeOffset? LastSeenAt { get; set; }
+    /// <summary>The profile picture, a <see cref="StoredFile"/> in no chat.</summary>
+    public Guid? AvatarFileId { get; set; }
 }
 
 public class Chat

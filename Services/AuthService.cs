@@ -200,5 +200,17 @@ namespace Mi_nU.Services
             await SecureStorage.Default.SetAsync(SessionKey, JsonSerializer.Serialize(session, AuthJsonContext.Default.AuthResponse));
             Session = session;
         }
+
+        /// <summary>The signed-in user's own name or picture changed, here or on another device.</summary>
+        public event Action? ProfileChanged;
+
+        /// <summary>Keeps the signed-in user's profile current, and remembered for the next start.</summary>
+        public async Task UpdateProfileAsync(UserDto user)
+        {
+            if (Session is not { } session || session.User.Id != user.Id || session.User == user)
+                return;
+            await SaveAsync(session with { User = user });
+            ProfileChanged?.Invoke();
+        }
     }
 }

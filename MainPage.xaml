@@ -12,10 +12,12 @@
     <Grid x:Name="ListPane" RowDefinitions="Auto,Auto,*">
         <Grid ColumnDefinitions="*,Auto" Padding="16,16,16,4">
             <Label Text="Чаты" Style="{StaticResource Title}" VerticalTextAlignment="Center" />
-            <Button Grid.Column="1" x:Name="ProfileButton" AutomationId="MainProfile" Text="Я" FontSize="15"
-                    Style="{StaticResource IconButton}" FontFamily="InterSemiBold" WidthRequest="40" HeightRequest="40" CornerRadius="20"
-                    BackgroundColor="{DynamicResource AccentSoft}" TextColor="{DynamicResource AccentInk}"
-                    SemanticProperties.Description="Профиль и выход" Clicked="OnProfileClicked" />
+            <!-- The user's own avatar, with a transparent button over it that opens the profile. -->
+            <Grid Grid.Column="1" WidthRequest="40" HeightRequest="40">
+                <controls:Avatar x:Name="ProfileAvatar" Size="40" />
+                <Button x:Name="ProfileButton" AutomationId="MainProfile" BackgroundColor="Transparent" BorderWidth="0" CornerRadius="20"
+                        Padding="0" SemanticProperties.Description="Профиль" Clicked="OnProfileClicked" />
+            </Grid>
         </Grid>
 
         <Border Grid.Row="1" Style="{StaticResource FilledField}" Margin="16,8,16,8">
@@ -50,7 +52,7 @@
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
                             <Grid VerticalOptions="Center" WidthRequest="52" HeightRequest="52">
-                                <controls:Avatar Name="{Binding Title}" Seed="{Binding Seed}" Size="52" />
+                                <controls:Avatar Name="{Binding Title}" Seed="{Binding Seed}" PictureId="{Binding PictureId}" Size="52" />
                                 <!-- The ring in the page colour sets the dot off the avatar. -->
                                 <Border IsVisible="{Binding Online}" WidthRequest="16" HeightRequest="16" StrokeShape="RoundRectangle 8" StrokeThickness="3"
                                         Stroke="{DynamicResource Background}" BackgroundColor="{DynamicResource Accent}"
