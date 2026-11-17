@@ -8,7 +8,7 @@ namespace Mi_nU.Pages
     public partial class CallPage : ContentPage
     {
         readonly CallService _calls;
-        readonly (Border Tile, Avatar Avatar, Label Name, VideoView Video)[] _tiles;
+        readonly (Border Tile, Avatar Avatar, Label Name, VideoView Video, PulseRings Rings, Border NamePill)[] _tiles;
         readonly IDispatcherTimer _timer;
         DateTime? _connectedAt;
 
@@ -16,7 +16,11 @@ namespace Mi_nU.Pages
         {
             InitializeComponent();
             _calls = calls;
-            _tiles = [(Tile0, Avatar0, Name0, Video0), (Tile1, Avatar1, Name1, Video1), (Tile2, Avatar2, Name2, Video2), (Tile3, Avatar3, Name3, Video3)];
+            _tiles =
+            [
+                (Tile0, Avatar0, Name0, Video0, Rings0, NamePill0), (Tile1, Avatar1, Name1, Video1, Rings1, NamePill1),
+                (Tile2, Avatar2, Name2, Video2, Rings2, NamePill2), (Tile3, Avatar3, Name3, Video3, Rings3, NamePill3),
+            ];
             _timer = Dispatcher.CreateTimer();
             _timer.Interval = TimeSpan.FromSeconds(1);
             _timer.Tick += OnTick;
@@ -51,7 +55,10 @@ namespace Mi_nU.Pages
             _calls.Changed -= Refresh;
             _calls.SpeakingChanged -= Refresh;
             foreach (var tile in _tiles)
+            {
                 tile.Video.Track = null;
+                tile.Rings.IsActive = false;
+            }
             LocalVideo.Track = null;
         }
 
@@ -81,15 +88,17 @@ namespace Mi_nU.Pages
                 shown.Add((_calls.Title, null, false, null));
             // Only worth marking among several tiles: one person filling the screen is obviously the one talking.
             var markSpeaker = shown.Count > 1;
+            var colors = ColorsFor(shown.Select(person => person.Name).ToList());
 
             for (var i = 0; i < _tiles.Length; i++)
             {
-                var (tile, avatar, name, video) = _tiles[i];
+                var (tile, avatar, name, video, rings, namePill) = _tiles[i];
                 var visible = i < shown.Count;
                 tile.IsVisible = visible;
                 if (!visible)
                 {
                     video.Track = null;
+                    rings.IsActive = false;
                     continue;
                 }
 
@@ -100,9 +109,24 @@ namespace Mi_nU.Pages
                 video.Track = track;
                 video.IsVisible = track is not null;
                 var marked = markSpeaker && speaking;
-                var style = StyleNamed(marked ? "CallTileSpeaking" : "CallTile");
+
+                // Without video, a round avatar in the person's colour, with waves spreading from it while they talk;
+                // with video, the box, framed in their colour while they talk.
+                var audioOnly = track is null;
+                rings.IsVisible = audioOnly;
+                rings.RingColor = colors[i];
+                rings.InnerRadius = avatar.Size / 2;
+                rings.IsActive = audioOnly && marked;
+                var style = StyleNamed(audioOnly ? "CallTileAudio" : marked ? "CallTileSpeaking" : "CallTile");
                 if (tile.Style != style)
                     tile.Style = style;
+                if (!audioOnly && marked)
+                    tile.Stroke = new SolidColorBrush(colors[i]);
+                else
+                    tile.ClearValue(Border.StrokeProperty);
+                var pillStyle = StyleNamed(audioOnly ? "TileNameUnder" : "TileName");
+                if (namePill.Style != pillStyle)
+                    namePill.Style = pillStyle;
                 // The frame can't be seen by a screen reader, so the name says it too.
                 SemanticProperties.SetDescription(name, marked ? $"{who}, говорит" : who);
             }
@@ -122,6 +146,25 @@ namespace Mi_nU.Pages
             // With the camera off there is nothing to switch.
             SwitchCameraButton.IsVisible = _calls.CanSwitchCamera && !_calls.IsCameraOff;
             UpdateStatus();
+        }
+
+        /// <summary>
+        /// A colour for each person, from the hue of their avatar; two people in one call never share one,
+        /// the second taking the next free hue.
+        /// </summary>
+        static List<Color> ColorsFor(IReadOnlyList<string> names)
+        {
+            var taken = new bool[Avatar.TintCount];
+            var colors = new List<Color>();
+            foreach (var name in names)
+            {
+                var tint = Avatar.TintOf(name);
+                for (var tries = 0; taken[tint] && tries < Avatar.TintCount; tries++)
+                    tint = (tint + 1) % Avatar.TintCount;
+                taken[tint] = true;
+                colors.Add(Application.Current!.Resources.TryGetValue($"CallRing{tint}", out var color) ? (Color)color : Colors.White);
+            }
+            return colors;
         }
 
         static Style StyleNamed(string key) =>

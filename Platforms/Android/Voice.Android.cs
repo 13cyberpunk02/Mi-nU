@@ -33,6 +33,9 @@ namespace Mi_nU.Services
             return Task.CompletedTask;
         }
 
+        // The loudest moment since it was last asked, out of the 16-bit range.
+        private partial float LevelPlatform() => (_recorder?.MaxAmplitude ?? 0) / 32767f;
+
         private partial Task StopPlatformAsync()
         {
             var recorder = _recorder;

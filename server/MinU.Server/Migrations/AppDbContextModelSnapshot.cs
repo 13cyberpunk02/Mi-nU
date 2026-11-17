@@ -223,6 +223,10 @@ namespace MinU.Server.Migrations
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("Waveform")
+                        .HasMaxLength(88)
+                        .HasColumnType("character varying(88)");
+
                     b.Property<int?>("Width")
                         .HasColumnType("integer");
 

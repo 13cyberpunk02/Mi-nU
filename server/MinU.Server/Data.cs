@@ -101,6 +101,9 @@ public class StoredFile
     public int? Height { get; set; }
     /// <summary>A voice message's length in seconds, as the recording app measured it.</summary>
     public int? DurationSeconds { get; set; }
+    /// <summary>A voice message's loudness over time, as the recording app measured it: base64 of up to 64 levels 0..31.</summary>
+    [System.ComponentModel.DataAnnotations.MaxLength(88)]
+    public string? Waveform { get; set; }
 
     /// <summary>The object's name in storage: random, so one can't be guessed from another.</summary>
     public string Key => Id.ToString("N");

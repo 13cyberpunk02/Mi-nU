@@ -27,7 +27,7 @@ public static partial class Endpoints
         // Uploads into a chat the user is in. The file isn't shown to anyone until it is sent in a message.
         // A picture comes with its width and height, which the app measured; the server doesn't decode images.
         api.MapPost("/chats/{chatId:guid}/files", async (Guid chatId, IFormFile? file, [FromForm] int? width, [FromForm] int? height,
-            [FromForm] int? duration,
+            [FromForm] int? duration, [FromForm] string? waveform,
             ChatService chats, AppDbContext db, IFileStorage storage, ILogger<StoredFile> logger, ClaimsPrincipal principal,
             CancellationToken cancel) =>
         {
@@ -58,6 +58,7 @@ public static partial class Endpoints
                 Height = isImage && height is > 0 and <= 20_000 ? height : null,
                 // Sound only, up to an hour: anything longer isn't a voice message.
                 DurationSeconds = contentType.StartsWith("audio/") && duration is >= 0 and <= 3600 ? duration : null,
+                Waveform = contentType.StartsWith("audio/") && IsWaveform(waveform) ? waveform : null,
             };
             try
             {
@@ -135,6 +136,15 @@ public static partial class Endpoints
             || (bytes[..4].SequenceEqual("RIFF"u8) && bytes[8..12].SequenceEqual("WEBP"u8))
             || (bytes[4..8].SequenceEqual("ftyp"u8) && (bytes[8..12].SequenceEqual("heic"u8) || bytes[8..12].SequenceEqual("heix"u8)
                 || bytes[8..12].SequenceEqual("mif1"u8) || bytes[8..12].SequenceEqual("heif"u8)));
+    }
+
+    /// <summary>Base64 of 1 to 64 levels, each 0..31; anything else is dropped rather than stored.</summary>
+    static bool IsWaveform(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length > 88)
+            return false;
+        var bytes = new byte[66];
+        return Convert.TryFromBase64String(value, bytes, out var count) && count is > 0 and <= 64 && bytes.AsSpan(0, count).IndexOfAnyExceptInRange((byte)0, (byte)31) < 0;
     }
 
     // Keeps only the name itself, whatever path or control characters a client sent along.

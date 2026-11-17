@@ -14,12 +14,63 @@ namespace Mi_nU.Services
         /// <summary>Anything shorter is a slip of the finger rather than a message.</summary>
         static readonly TimeSpan MinLength = TimeSpan.FromMilliseconds(700);
 
+        /// <summary>Bars in a waveform; the server takes up to 64.</summary>
+        const int WaveformBars = 48;
+
         readonly Stopwatch _clock = new();
+        readonly List<float> _levels = [];
+        Timer? _sampler;
         string? _path;
 
         public bool IsRecording { get; private set; }
 
         public TimeSpan Elapsed => _clock.Elapsed;
+
+        /// <summary>How loud the last <paramref name="count"/> moments were, 0 to 1, oldest first; for showing while recording.</summary>
+        public float[] RecentLevels(int count)
+        {
+            lock (_levels)
+                return _levels.Skip(Math.Max(0, _levels.Count - count)).ToArray();
+        }
+
+        /// <summary>Twenty times a second: the loudest the microphone heard since the last time, on a scale that suits the ear.</summary>
+        void Sample()
+        {
+            float peak;
+            try
+            {
+                peak = LevelPlatform();
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                // Stopping just now; this moment is simply not counted.
+                Debug.WriteLine($"Voice level: {e.Message}");
+                return;
+            }
+            // Decibels from -50 to 0, as the ear hears loudness, rather than the raw amplitude.
+            var level = peak <= 0 ? 0f : Math.Clamp((20 * MathF.Log10(peak) + 50) / 50, 0f, 1f);
+            lock (_levels)
+                _levels.Add(level);
+        }
+
+        /// <summary>The recording's loudness in <see cref="WaveformBars"/> bars of 0 to 31, the loudest moment the tallest.</summary>
+        byte[] Waveform()
+        {
+            float[] levels;
+            lock (_levels)
+                levels = [.. _levels];
+            if (levels.Length == 0)
+                return [];
+            var bars = Math.Min(WaveformBars, levels.Length);
+            var peaks = new float[bars];
+            for (var i = 0; i < levels.Length; i++)
+            {
+                var bar = (int)((long)i * bars / levels.Length);
+                peaks[bar] = Math.Max(peaks[bar], levels[i]);
+            }
+            var loudest = Math.Max(peaks.Max(), 0.05f);
+            return [.. peaks.Select(peak => (byte)Math.Round(31 * peak / loudest))];
+        }
 
         /// <summary>False when the microphone isn't allowed or doesn't start.</summary>
         public async Task<bool> StartAsync()
@@ -51,19 +102,24 @@ namespace Mi_nU.Services
                 return false;
             }
             _path = path;
+            lock (_levels)
+                _levels.Clear();
             _clock.Restart();
             IsRecording = true;
+            _sampler = new Timer(_ => Sample(), null, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(50));
             return true;
         }
 
-        /// <summary>The finished recording and its length, or null when it is too short or didn't work out.</summary>
-        public async Task<(string Path, int Seconds)?> StopAsync()
+        /// <summary>The finished recording, its length and its waveform, or null when it is too short or didn't work out.</summary>
+        public async Task<(string Path, int Seconds, byte[] Waveform)?> StopAsync()
         {
             if (!IsRecording || _path is not { } path)
                 return null;
             IsRecording = false;
             _path = null;
             _clock.Stop();
+            _sampler?.Dispose();
+            _sampler = null;
             try
             {
                 await StopPlatformAsync();
@@ -80,7 +136,7 @@ namespace Mi_nU.Services
                 TryDelete(path);
                 return null;
             }
-            return (path, Math.Max(1, (int)Math.Round(_clock.Elapsed.TotalSeconds)));
+            return (path, Math.Max(1, (int)Math.Round(_clock.Elapsed.TotalSeconds)), Waveform());
         }
 
         /// <summary>Stops and throws the recording away.</summary>
@@ -104,6 +160,8 @@ namespace Mi_nU.Services
 
         private partial Task StartPlatformAsync(string path);
         private partial Task StopPlatformAsync();
+        /// <summary>The loudest sample since the last call, 0 to 1; called from a timer thread.</summary>
+        private partial float LevelPlatform();
     }
 
     /// <summary>

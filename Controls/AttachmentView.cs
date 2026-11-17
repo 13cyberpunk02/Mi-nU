@@ -7,12 +7,16 @@ namespace Mi_nU.Controls
     /// A file in a message. <see cref="LocalPath"/> is set while the sender's own copy is all there is, before upload,
     /// so the photo shows at once.
     /// </summary>
-    public sealed record AttachmentItem(FileDto File, string? LocalPath = null);
+    public sealed record AttachmentItem(FileDto File, string? LocalPath = null)
+    {
+        /// <summary>Set in a bubble of photos only: the photo takes this width, edge to edge, without corners of its own.</summary>
+        public double? FitWidth { get; init; }
+    }
 
     /// <summary>A photo in its proportions, loaded from the device or storage, or for other files a line with the name.</summary>
     public class AttachmentView : ContentView
     {
-        const double MaxWidth = 260;
+        public const double MaxWidth = 260;
         const double MaxHeight = 320;
         const double MinSide = 80;
 
@@ -23,6 +27,7 @@ namespace Mi_nU.Controls
         readonly Image _image = new() { Aspect = Aspect.AspectFill };
         readonly Label _placeholder = new() { FontFamily = "Icons", FontSize = 28, HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center };
         readonly Border _photo;
+        readonly Microsoft.Maui.Controls.Shapes.RoundRectangle _photoShape = new() { CornerRadius = 12 };
         readonly Border _file;
         readonly Label _fileName = new() { FontFamily = "InterSemiBold", FontSize = 14, LineBreakMode = LineBreakMode.MiddleTruncation, MaxLines = 1 };
         readonly Label _fileSize = new() { FontSize = 12 };
@@ -34,7 +39,7 @@ namespace Mi_nU.Controls
             _photo = new Border
             {
                 StrokeThickness = 0,
-                StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 12 },
+                StrokeShape = _photoShape,
                 Content = new Grid { Children = { _placeholder, _image } },
             };
             _photo.SetDynamicResource(BackgroundColorProperty, "Pill");
@@ -57,48 +62,48 @@ namespace Mi_nU.Controls
             };
             _file.SetDynamicResource(BackgroundColorProperty, "Pill");
 
-            // A voice message: a round play button, how far it has played, and its length.
+            // A voice message, as people know it: a round play button beside the recording's waveform, which fills
+            // with colour as it plays, and the time under it.
             var button = new Border
             {
-                WidthRequest = 36,
-                HeightRequest = 36,
+                WidthRequest = 42,
+                HeightRequest = 42,
                 StrokeThickness = 0,
                 StrokeShape = new Microsoft.Maui.Controls.Shapes.Ellipse(),
                 Content = _voiceIcon,
+                VerticalOptions = LayoutOptions.Center,
             };
             button.SetDynamicResource(BackgroundColorProperty, "Accent");
             _voiceIcon.SetDynamicResource(Label.TextColorProperty, "OnAccent");
-            _voiceProgress.SetDynamicResource(ProgressBar.ProgressColorProperty, "Accent");
+            _voiceWave.SetDynamicResource(WaveformView.PlayedColorProperty, "Accent");
+            _voiceWave.SetDynamicResource(WaveformView.RestColorProperty, "TextMuted");
             _voiceTime.SetDynamicResource(Label.TextColorProperty, "TextMuted");
-            _voice = new Border
+            _voice = new Grid
             {
-                StrokeThickness = 0,
-                Padding = new Thickness(6, 6, 12, 6),
-                StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 24 },
-                WidthRequest = 240,
+                WidthRequest = 236,
                 AutomationId = "VoiceMessage",
-                Content = new Grid
+                ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+                ColumnSpacing = 10,
+                Children =
                 {
-                    ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)],
-                    ColumnSpacing = 10,
-                    Children = { button, _voiceProgress.Column(1), _voiceTime.Column(2) },
+                    button,
+                    new VerticalStackLayout { Spacing = 2, VerticalOptions = LayoutOptions.Center, Children = { _voiceWave, _voiceTime } }.Column(1),
                 },
             };
-            _voice.SetDynamicResource(BackgroundColorProperty, "Pill");
             Loaded += (_, _) => Player.Changed += ShowPlayback;
             Unloaded += (_, _) => Player.Changed -= ShowPlayback;
 
             GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(async () => await OpenAsync()) });
         }
 
-        readonly Border _voice;
+        readonly Grid _voice;
         readonly Label _voiceIcon = new()
         {
-            Text = Themes.Icons.Play, FontFamily = "Icons", FontSize = 18,
+            Text = Themes.Icons.Play, FontFamily = "Icons", FontSize = 20,
             HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center,
         };
-        readonly ProgressBar _voiceProgress = new() { VerticalOptions = LayoutOptions.Center };
-        readonly Label _voiceTime = new() { FontSize = 13, VerticalOptions = LayoutOptions.Center, AutomationId = "VoiceTime" };
+        readonly WaveformView _voiceWave = new();
+        readonly Label _voiceTime = new() { FontSize = 12, AutomationId = "VoiceTime" };
 
         static VoicePlayer Player => IPlatformApplication.Current!.Services.GetRequiredService<VoicePlayer>();
 
@@ -120,13 +125,13 @@ namespace Mi_nU.Controls
             if (!current)
             {
                 _voiceIcon.Text = Themes.Icons.Play;
-                _voiceProgress.Progress = 0;
+                _voiceWave.Progress = 0;
                 _voiceTime.Text = Formatting.Duration(length);
                 return;
             }
             var position = Player.Position;
             _voiceIcon.Text = Player.IsPlaying ? Themes.Icons.Pause : Themes.Icons.Play;
-            _voiceProgress.Progress = length > 0 ? Math.Clamp(position.TotalSeconds / length, 0, 1) : 0;
+            _voiceWave.Progress = length > 0 ? position.TotalSeconds / length : 0;
             _voiceTime.Text = Formatting.Duration((int)position.TotalSeconds);
         }
 
@@ -149,6 +154,7 @@ namespace Mi_nU.Controls
 
             if (item.File.IsVoice)
             {
+                _voiceWave.Levels = WaveformView.Decode(item.File.Waveform);
                 Content = _voice;
                 ShowPlayback();
                 return;
@@ -164,6 +170,15 @@ namespace Mi_nU.Controls
             }
 
             var (width, height) = DisplaySize(item.File.Width, item.File.Height);
+            if (item.FitWidth is { } fit)
+            {
+                // As wide as the bubble; the height follows the photo's proportions, cropped if it is very tall.
+                height = item.File.Width is > 0 && item.File.Height is > 0
+                    ? Math.Clamp(fit * item.File.Height.Value / item.File.Width.Value, MinSide, MaxHeight)
+                    : fit;
+                width = fit;
+            }
+            _photoShape.CornerRadius = item.FitWidth is null ? 12 : 0;
             _photo.WidthRequest = width;
             _photo.HeightRequest = height;
             _placeholder.Text = Themes.Icons.Image;
@@ -276,7 +291,7 @@ namespace Mi_nU.Controls
         }
 
         /// <summary>The picture's own proportions, fitted into the bubble; a square when they aren't known.</summary>
-        static (double Width, double Height) DisplaySize(int? pixelWidth, int? pixelHeight)
+        public static (double Width, double Height) DisplaySize(int? pixelWidth, int? pixelHeight)
         {
             if (pixelWidth is not > 0 || pixelHeight is not > 0)
                 return (220, 220);

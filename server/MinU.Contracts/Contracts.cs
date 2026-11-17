@@ -116,9 +116,11 @@ public record CallJoinResult(Guid CallId, string ParticipantId, IReadOnlyList<Ca
 
 /// <summary>
 /// An uploaded file. Its bytes are fetched through a short-lived link, see <see cref="FileLinkDto"/>.
-/// A picture has its size in pixels, for laying it out before it loads; a voice message its length in seconds.
+/// A picture has its size in pixels, for laying it out before it loads; a voice message its length in seconds
+/// and <see cref="Waveform"/>: its loudness over time, base64 of up to 64 levels from 0 to 31, drawn as bars.
 /// </summary>
-public record FileDto(Guid Id, string Name, string ContentType, long Size, int? Width = null, int? Height = null, int? DurationSeconds = null)
+public record FileDto(Guid Id, string Name, string ContentType, long Size, int? Width = null, int? Height = null, int? DurationSeconds = null,
+    string? Waveform = null)
 {
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsImage => ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);

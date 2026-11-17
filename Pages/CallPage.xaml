@@ -24,30 +24,34 @@
             <Grid x:Name="Tiles" RowSpacing="8" ColumnSpacing="8">
                 <Border x:Name="Tile0" Style="{StaticResource CallTile}">
                     <Grid>
-                        <controls:Avatar x:Name="Avatar0" Size="88" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <controls:PulseRings x:Name="Rings0" IsVisible="False" />
+                        <controls:Avatar x:Name="Avatar0" Size="96" HorizontalOptions="Center" VerticalOptions="Center" />
                         <webrtc:VideoView x:Name="Video0" />
-                        <Border Style="{StaticResource TileName}"><Label x:Name="Name0" AutomationId="CallTile0" Style="{StaticResource TileNameText}" /></Border>
+                        <Border x:Name="NamePill0" Style="{StaticResource TileName}"><Label x:Name="Name0" AutomationId="CallTile0" Style="{StaticResource TileNameText}" /></Border>
                     </Grid>
                 </Border>
                 <Border x:Name="Tile1" Style="{StaticResource CallTile}" IsVisible="False">
                     <Grid>
-                        <controls:Avatar x:Name="Avatar1" Size="88" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <controls:PulseRings x:Name="Rings1" IsVisible="False" />
+                        <controls:Avatar x:Name="Avatar1" Size="96" HorizontalOptions="Center" VerticalOptions="Center" />
                         <webrtc:VideoView x:Name="Video1" />
-                        <Border Style="{StaticResource TileName}"><Label x:Name="Name1" AutomationId="CallTile1" Style="{StaticResource TileNameText}" /></Border>
+                        <Border x:Name="NamePill1" Style="{StaticResource TileName}"><Label x:Name="Name1" AutomationId="CallTile1" Style="{StaticResource TileNameText}" /></Border>
                     </Grid>
                 </Border>
                 <Border x:Name="Tile2" Style="{StaticResource CallTile}" IsVisible="False">
                     <Grid>
-                        <controls:Avatar x:Name="Avatar2" Size="88" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <controls:PulseRings x:Name="Rings2" IsVisible="False" />
+                        <controls:Avatar x:Name="Avatar2" Size="96" HorizontalOptions="Center" VerticalOptions="Center" />
                         <webrtc:VideoView x:Name="Video2" />
-                        <Border Style="{StaticResource TileName}"><Label x:Name="Name2" AutomationId="CallTile2" Style="{StaticResource TileNameText}" /></Border>
+                        <Border x:Name="NamePill2" Style="{StaticResource TileName}"><Label x:Name="Name2" AutomationId="CallTile2" Style="{StaticResource TileNameText}" /></Border>
                     </Grid>
                 </Border>
                 <Border x:Name="Tile3" Style="{StaticResource CallTile}" IsVisible="False">
                     <Grid>
-                        <controls:Avatar x:Name="Avatar3" Size="88" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <controls:PulseRings x:Name="Rings3" IsVisible="False" />
+                        <controls:Avatar x:Name="Avatar3" Size="96" HorizontalOptions="Center" VerticalOptions="Center" />
                         <webrtc:VideoView x:Name="Video3" />
-                        <Border Style="{StaticResource TileName}"><Label x:Name="Name3" AutomationId="CallTile3" Style="{StaticResource TileNameText}" /></Border>
+                        <Border x:Name="NamePill3" Style="{StaticResource TileName}"><Label x:Name="Name3" AutomationId="CallTile3" Style="{StaticResource TileNameText}" /></Border>
                     </Grid>
                 </Border>
             </Grid>

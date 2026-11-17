@@ -16,6 +16,13 @@
     <Color x:Key="CallMuted">#A3ACB6</Color>
     <Color x:Key="CallAccent">#4CC3B5</Color>
     <Color x:Key="CallWarning">#F2C46B</Color>
+    <!-- Each person's colour in a call, the hues of the avatar tints, bright enough for the dark call screen. -->
+    <Color x:Key="CallRing0">#5B9BF0</Color>
+    <Color x:Key="CallRing1">#F2A14B</Color>
+    <Color x:Key="CallRing2">#A48BF2</Color>
+    <Color x:Key="CallRing3">#3CC8B8</Color>
+    <Color x:Key="CallRing4">#F07EA0</Color>
+    <Color x:Key="CallRing5">#9CCB5A</Color>
     <Color x:Key="Danger">#C6372E</Color>
     <Color x:Key="Success">#1F8A53</Color>
     <Color x:Key="OnStatus">#FFFFFF</Color>
@@ -240,6 +247,20 @@
     <Style x:Key="CallTileSpeaking" TargetType="Border" BasedOn="{StaticResource CallTile}">
         <Setter Property="Stroke" Value="{StaticResource CallAccent}" />
         <Setter Property="StrokeThickness" Value="3" />
+    </Style>
+    <!-- Someone without video: no box, only their round avatar with their rings, and the name under it. -->
+    <Style x:Key="CallTileAudio" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="StrokeThickness" Value="0" />
+    </Style>
+    <Style x:Key="TileNameUnder" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="HorizontalOptions" Value="Center" />
+        <Setter Property="VerticalOptions" Value="Center" />
+        <!-- Below the avatar: centred, then moved down past it and its ring. -->
+        <Setter Property="Margin" Value="0,152,0,0" />
     </Style>
     <Style x:Key="TileNameText" TargetType="Label">
         <Setter Property="FontFamily" Value="InterSemiBold" />

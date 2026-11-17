@@ -58,6 +58,17 @@ namespace Mi_nU.Controls
             set => SetValue(PictureIdProperty, value);
         }
 
+        public const int TintCount = Tints;
+
+        /// <summary>Which of the tints a seed gets, the same on every run: string.GetHashCode changes between runs.</summary>
+        public static int TintOf(string seed)
+        {
+            var tint = 0;
+            foreach (var c in seed)
+                tint = (tint * 31 + c) % Tints;
+            return tint;
+        }
+
         public static string InitialsOf(string name)
         {
             var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -76,10 +87,7 @@ namespace Mi_nU.Controls
             _initials.Text = InitialsOf(Name ?? "");
             SemanticProperties.SetDescription(this, Name);
 
-            // A stable hash: string.GetHashCode changes between runs.
-            var tint = 0;
-            foreach (var c in Seed ?? "")
-                tint = (tint * 31 + c) % Tints;
+            var tint = TintOf(Seed ?? "");
             _circle.SetDynamicResource(BackgroundColorProperty, $"AvatarBackground{tint}");
             _initials.SetDynamicResource(Label.TextColorProperty, $"AvatarInk{tint}");
         }

@@ -8,21 +8,26 @@
              BackgroundColor="{DynamicResource ChatBackground}">
 
     <ContentView.Resources>
+        <!--
+            The day sits in the middle of the whole row; only the bubble keeps clear of the other side.
+            Photos fill their bubble to the edges, the caption and time in a strip below (see MessageRow.IsMedia).
+        -->
         <DataTemplate x:Key="MineTemplate" x:DataType="controls:MessageRow">
-            <VerticalStackLayout Padding="64,0,12,0" Margin="{Binding Spacing}">
+            <VerticalStackLayout Padding="12,0" Margin="{Binding Spacing}">
                 <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
                     <Label Text="{Binding Day}" Style="{StaticResource Small}" />
                 </Border>
-                <Border HorizontalOptions="End" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
-                        BackgroundColor="{DynamicResource BubbleMine}" MaximumWidthRequest="520">
+                <Border HorizontalOptions="End" Margin="52,0,0,0" Padding="{Binding BubblePadding}" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
+                        BackgroundColor="{DynamicResource BubbleMine}" MaximumWidthRequest="520" WidthRequest="{Binding MediaWidth}">
                     <VerticalStackLayout Spacing="2">
-                        <VerticalStackLayout Spacing="4" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Attachments}">
+                        <VerticalStackLayout Spacing="{Binding AttachmentSpacing}" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Shown}">
                             <BindableLayout.ItemTemplate>
                                 <DataTemplate x:DataType="controls:AttachmentItem">
                                     <controls:AttachmentView Item="{Binding .}" />
                                 </DataTemplate>
                             </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
+                        <VerticalStackLayout Spacing="2" Padding="{Binding FooterPadding}">
                         <Label Text="{Binding Text}" LineHeight="1.25" IsVisible="{Binding HasText}" />
                         <HorizontalStackLayout HorizontalOptions="End" Spacing="4">
                             <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource BubbleMineMuted}" VerticalTextAlignment="Center" />
@@ -36,60 +41,66 @@
                                 </Label.Triggers>
                             </Label>
                         </HorizontalStackLayout>
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>
         </DataTemplate>
         <DataTemplate x:Key="MineFailedTemplate" x:DataType="controls:MessageRow">
-            <VerticalStackLayout Padding="64,0,12,0" Margin="{Binding Spacing}">
+            <VerticalStackLayout Padding="12,0" Margin="{Binding Spacing}">
                 <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
                     <Label Text="{Binding Day}" Style="{StaticResource Small}" />
                 </Border>
-                <Border HorizontalOptions="End" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
-                        BackgroundColor="{DynamicResource BubbleFailed}" MaximumWidthRequest="520">
+                <Border HorizontalOptions="End" Margin="52,0,0,0" Padding="{Binding BubblePadding}" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
+                        BackgroundColor="{DynamicResource BubbleFailed}" MaximumWidthRequest="520" WidthRequest="{Binding MediaWidth}">
                     <VerticalStackLayout Spacing="2">
-                        <VerticalStackLayout Spacing="4" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Attachments}">
+                        <VerticalStackLayout Spacing="{Binding AttachmentSpacing}" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Shown}">
                             <BindableLayout.ItemTemplate>
                                 <DataTemplate x:DataType="controls:AttachmentItem">
                                     <controls:AttachmentView Item="{Binding .}" />
                                 </DataTemplate>
                             </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
-                        <Label Text="{Binding Text}" LineHeight="1.25" IsVisible="{Binding HasText}" />
-                        <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource DangerText}" HorizontalOptions="End" />
+                        <VerticalStackLayout Spacing="2" Padding="{Binding FooterPadding}">
+                            <Label Text="{Binding Text}" LineHeight="1.25" IsVisible="{Binding HasText}" />
+                            <Label Text="{Binding Status}" Style="{StaticResource Small}" TextColor="{DynamicResource DangerText}" HorizontalOptions="End" />
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>
         </DataTemplate>
         <DataTemplate x:Key="OtherTemplate" x:DataType="controls:MessageRow">
-            <VerticalStackLayout Padding="12,0,64,0" Margin="{Binding Spacing}">
+            <VerticalStackLayout Padding="12,0" Margin="{Binding Spacing}">
                 <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
                     <Label Text="{Binding Day}" Style="{StaticResource Small}" />
                 </Border>
-                <Border HorizontalOptions="Start" Padding="12,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,6,18"
-                        BackgroundColor="{DynamicResource BubbleOther}" MaximumWidthRequest="520">
+                <Border HorizontalOptions="Start" Margin="0,0,52,0" Padding="{Binding BubblePadding}" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,6,18"
+                        BackgroundColor="{DynamicResource BubbleOther}" MaximumWidthRequest="520" WidthRequest="{Binding MediaWidth}">
                     <VerticalStackLayout Spacing="2">
-                        <Label Text="{Binding Sender}" IsVisible="{Binding ShowSenderName}" FontFamily="InterSemiBold" FontSize="13" TextColor="{DynamicResource AccentText}" />
-                        <VerticalStackLayout Spacing="4" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Attachments}">
+                        <Label Text="{Binding Sender}" IsVisible="{Binding ShowSenderName}" Margin="{Binding NamePadding}"
+                               FontFamily="InterSemiBold" FontSize="13" TextColor="{DynamicResource AccentText}" />
+                        <VerticalStackLayout Spacing="{Binding AttachmentSpacing}" IsVisible="{Binding HasAttachments}" BindableLayout.ItemsSource="{Binding Shown}">
                             <BindableLayout.ItemTemplate>
                                 <DataTemplate x:DataType="controls:AttachmentItem">
                                     <controls:AttachmentView Item="{Binding .}" />
                                 </DataTemplate>
                             </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
-                        <Label Text="{Binding Text}" LineHeight="1.25" IsVisible="{Binding HasText}" />
-                        <Label Text="{Binding Status}" Style="{StaticResource Small}" HorizontalOptions="End" />
+                        <VerticalStackLayout Spacing="2" Padding="{Binding FooterPadding}">
+                            <Label Text="{Binding Text}" LineHeight="1.25" IsVisible="{Binding HasText}" />
+                            <Label Text="{Binding Status}" Style="{StaticResource Small}" HorizontalOptions="End" />
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>
         </DataTemplate>
         <!-- A call: the icon in a circle, what happened, and when; a tap calls back. -->
         <DataTemplate x:Key="MineCallTemplate" x:DataType="controls:MessageRow">
-            <VerticalStackLayout Padding="64,0,12,0" Margin="{Binding Spacing}">
+            <VerticalStackLayout Padding="12,0" Margin="{Binding Spacing}">
                 <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
                     <Label Text="{Binding Day}" Style="{StaticResource Small}" />
                 </Border>
-                <Border HorizontalOptions="End" Padding="10,8,14,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
+                <Border HorizontalOptions="End" Margin="52,0,0,0" Padding="10,8,14,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,18,6"
                         BackgroundColor="{DynamicResource BubbleMine}" SemanticProperties.Description="{Binding CallDescription}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                         <Border WidthRequest="36" HeightRequest="36" StrokeThickness="0" StrokeShape="RoundRectangle 18"
@@ -106,11 +117,11 @@
             </VerticalStackLayout>
         </DataTemplate>
         <DataTemplate x:Key="OtherCallTemplate" x:DataType="controls:MessageRow">
-            <VerticalStackLayout Padding="12,0,64,0" Margin="{Binding Spacing}">
+            <VerticalStackLayout Padding="12,0" Margin="{Binding Spacing}">
                 <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
                     <Label Text="{Binding Day}" Style="{StaticResource Small}" />
                 </Border>
-                <Border HorizontalOptions="Start" Padding="10,8,14,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,6,18"
+                <Border HorizontalOptions="Start" Margin="0,0,52,0" Padding="10,8,14,8" StrokeThickness="0" StrokeShape="RoundRectangle 18,18,6,18"
                         BackgroundColor="{DynamicResource BubbleOther}" SemanticProperties.Description="{Binding CallDescription}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                         <Border WidthRequest="36" HeightRequest="36" StrokeThickness="0" StrokeShape="RoundRectangle 18"
@@ -221,11 +232,13 @@
             <Grid x:Name="RecordingBar" IsVisible="False" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
                 <Button AutomationId="ChatRecordCancel" Text="{x:Static themes:Icons.Trash}" Style="{StaticResource IconButton}"
                         TextColor="{DynamicResource DangerText}" SemanticProperties.Description="Отменить запись" Clicked="OnRecordCancelClicked" />
-                <HorizontalStackLayout Grid.Column="1" Spacing="10" VerticalOptions="Center" Padding="8,0">
+                <!-- The voice as it is being recorded: the bars grow from the left as the microphone hears it. -->
+                <Grid Grid.Column="1" ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10" VerticalOptions="Center" Padding="8,0">
                     <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="5" Color="{DynamicResource DangerText}" VerticalOptions="Center" />
-                    <Label x:Name="RecordingTime" AutomationId="ChatRecordTime" Text="0:00" Style="{StaticResource Name}" VerticalOptions="Center" />
-                    <Label Text="Запись…" Style="{StaticResource Caption}" VerticalOptions="Center" />
-                </HorizontalStackLayout>
+                    <Label Grid.Column="1" x:Name="RecordingTime" AutomationId="ChatRecordTime" Text="0:00" Style="{StaticResource Name}" VerticalOptions="Center" />
+                    <controls:WaveformView Grid.Column="2" x:Name="LiveWave" VerticalOptions="Center" Progress="1"
+                                           PlayedColor="{DynamicResource DangerText}" RestColor="{DynamicResource TextMuted}" />
+                </Grid>
                 <Button Grid.Column="2" AutomationId="ChatRecordSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
                         SemanticProperties.Description="Отправить голосовое сообщение" Clicked="OnRecordSendClicked" />
             </Grid>

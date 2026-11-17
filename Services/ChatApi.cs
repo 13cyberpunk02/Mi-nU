@@ -40,7 +40,7 @@ namespace Mi_nU.Services
         /// along, so the chat can lay it out before it loads.
         /// </summary>
         public Task<FileDto> UploadFileAsync(Guid chatId, byte[] bytes, string name, string contentType,
-            int? width = null, int? height = null, int? durationSeconds = null, CancellationToken cancel = default)
+            int? width = null, int? height = null, int? durationSeconds = null, string? waveform = null, CancellationToken cancel = default)
         {
             // Bytes rather than a stream, so the request can be sent again after renewing the sign-in.
             var form = new MultipartFormDataContent();
@@ -53,6 +53,8 @@ namespace Mi_nU.Services
                 form.Add(new StringContent(h.ToString(System.Globalization.CultureInfo.InvariantCulture)), "height");
             if (durationSeconds is { } seconds)
                 form.Add(new StringContent(seconds.ToString(System.Globalization.CultureInfo.InvariantCulture)), "duration");
+            if (waveform is not null)
+                form.Add(new StringContent(waveform), "waveform");
             return SendAsync(HttpMethod.Post, $"/api/chats/{chatId}/files", form, ChatJsonContext.Default.FileDto, cancel, _uploads);
         }
 

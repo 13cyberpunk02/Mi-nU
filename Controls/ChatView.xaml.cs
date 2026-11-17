@@ -21,6 +21,21 @@ namespace Mi_nU.Controls
         /// <summary>Photos and files sent with the message; <see cref="Text"/> is then their caption, possibly empty.</summary>
         public IReadOnlyList<AttachmentItem>? Attachments { get; init; }
         public bool HasAttachments => Attachments is { Count: > 0 };
+
+        /// <summary>
+        /// Photos only: they fill the bubble to its edges, all one width, with the caption and time in a strip below,
+        /// so the bubble is as wide as the photos and a long caption wraps to them.
+        /// </summary>
+        public bool IsMedia => Attachments is { Count: > 0 } files && files.All(item => item.File.IsImage);
+        // A narrow photo still leaves room for a caption.
+        public double MediaWidth => !IsMedia ? -1
+            : Attachments!.Count == 1 ? Math.Max(200, AttachmentView.DisplaySize(Attachments[0].File.Width, Attachments[0].File.Height).Width)
+            : AttachmentView.MaxWidth;
+        public IReadOnlyList<AttachmentItem>? Shown => IsMedia ? Attachments!.Select(item => item with { FitWidth = MediaWidth }).ToList() : Attachments;
+        public Thickness BubblePadding => IsMedia ? new Thickness(0) : new Thickness(12, 8);
+        public Thickness FooterPadding => IsMedia ? new Thickness(12, 6, 12, 8) : new Thickness(0);
+        public Thickness NamePadding => IsMedia ? new Thickness(12, 8, 12, 6) : new Thickness(0);
+        public double AttachmentSpacing => IsMedia ? 2 : 4;
         public bool HasText => Text.Length > 0;
         /// <summary>Set for a call record, which shows as a call instead of text.</summary>
         public CallSummary? Call { get; init; }
@@ -426,16 +441,31 @@ namespace Mi_nU.Controls
             Composer.IsVisible = false;
             RecordingBar.IsVisible = true;
             RecordingTime.Text = Formatting.Duration(0);
+            ShowLiveWave();
             _recordingClock = Dispatcher.CreateTimer();
-            _recordingClock.Interval = TimeSpan.FromMilliseconds(250);
+            // Often enough for the bars to move with the voice.
+            _recordingClock.Interval = TimeSpan.FromMilliseconds(100);
             _recordingClock.Tick += async (_, _) =>
             {
                 RecordingTime.Text = Formatting.Duration((int)_recorder.Elapsed.TotalSeconds);
+                ShowLiveWave();
                 // A very long one goes as it is rather than growing without end.
                 if (_recorder.Elapsed >= VoiceRecorder.MaxLength)
                     await FinishRecordingAsync(send: true);
             };
             _recordingClock.Start();
+        }
+
+        /// <summary>One bar per moment heard, newest on the right once the row is full; dots where nothing is yet.</summary>
+        void ShowLiveWave()
+        {
+            var bars = Math.Max(1, (int)((LiveWave.Width + 2) / 5));
+            var recent = _recorder.RecentLevels(bars);
+            var levels = new byte[bars];
+            for (var i = 0; i < recent.Length; i++)
+                levels[i] = (byte)Math.Round(recent[i] * 31);
+            LiveWave.Levels = levels;
+            LiveWave.Progress = (double)recent.Length / bars;
         }
 
         async void OnRecordCancelClicked(object? sender, EventArgs e) => await FinishRecordingAsync(send: false);
@@ -474,13 +504,15 @@ namespace Mi_nU.Controls
                 VoiceRecorder.TryDelete(voice.Path);
                 return;
             }
+            // Empty when nothing was measured: the message then shows even bars.
+            var waveform = voice.Waveform.Length > 0 ? Convert.ToBase64String(voice.Waveform) : null;
             const string name = "voice.m4a";
             const string type = "audio/mp4";
             var row = new MessageRow(null, Guid.NewGuid(), "", _auth.Session?.User.DisplayName ?? "", false, true, DateTimeOffset.UtcNow, MessageState.Sending)
             {
-                Attachments = [new AttachmentItem(new FileDto(Guid.Empty, name, type, bytes.Length, DurationSeconds: voice.Seconds), voice.Path)],
+                Attachments = [new AttachmentItem(new FileDto(Guid.Empty, name, type, bytes.Length, DurationSeconds: voice.Seconds, Waveform: waveform), voice.Path)],
             };
-            _outgoing[row.ClientMessageId] = [new OutgoingFile(bytes, name, type, null, voice.Path, voice.Seconds)];
+            _outgoing[row.ClientMessageId] = [new OutgoingFile(bytes, name, type, null, voice.Path, voice.Seconds, waveform)];
             _rows.Add(row);
             Relink(_rows.Count - 1);
             ScrollToEnd();
@@ -512,9 +544,10 @@ namespace Mi_nU.Controls
 
         /// <summary>A picked file on its way: kept with what is known of it, so a retry uploads only what didn't make it.</summary>
         sealed class OutgoingFile(byte[] bytes, string name, string contentType, (int Width, int Height)? size, string localPath,
-            int? durationSeconds = null)
+            int? durationSeconds = null, string? waveform = null)
         {
             public int? DurationSeconds => durationSeconds;
+            public string? Waveform => waveform;
             public byte[] Bytes => bytes;
             public string Name => name;
             public string ContentType => contentType;
@@ -711,7 +744,7 @@ namespace Mi_nU.Controls
                 foreach (var outgoing in files.Where(outgoing => outgoing.Uploaded is null))
                 {
                     var file = await _api.UploadFileAsync(chat.Id, outgoing.Bytes, outgoing.Name, outgoing.ContentType,
-                        outgoing.Size?.Width, outgoing.Size?.Height, outgoing.DurationSeconds);
+                        outgoing.Size?.Width, outgoing.Size?.Height, outgoing.DurationSeconds, outgoing.Waveform);
                     // This device has the bytes already: they are never downloaded back.
                     _files.Put(file, outgoing.Bytes);
                     outgoing.Uploaded = file;
