@@ -123,6 +123,11 @@
 		<!-- Firebase also brings lifecycle 2.11; MAUI's 2.9 LiveData and Process would otherwise warn (NU1608) that they want 2.9. -->
 		<PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
 		<PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+		<!-- Video messages: CameraX records from the front camera and shows the preview in the chat. -->
+		<PackageReference Include="Xamarin.AndroidX.Camera.Camera2" Version="1.6.2" />
+		<PackageReference Include="Xamarin.AndroidX.Camera.Lifecycle" Version="1.6.2" />
+		<PackageReference Include="Xamarin.AndroidX.Camera.Video" Version="1.6.2" />
+		<PackageReference Include="Xamarin.AndroidX.Camera.View" Version="1.6.2" />
 		<!-- MinuNoPush=true leaves it out, for a build under another package name, which Firebase doesn't know. -->
 		<GoogleServicesJson Include="Platforms\Android\google-services.json" Condition="Exists('Platforms\Android\google-services.json') And '$(MinuNoPush)' != 'true'" />
 	</ItemGroup>

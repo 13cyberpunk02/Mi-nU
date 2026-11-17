@@ -172,6 +172,16 @@ namespace Mi_nU.Services
     {
         IDispatcherTimer? _ticker;
 
+        public VoicePlayer()
+        {
+            // A video message starting stops the voice.
+            Controls.MediaFocus.Taken += owner =>
+            {
+                if (owner != this)
+                    Stop();
+            };
+        }
+
         /// <summary>What is playing or paused: the file's id, or its path before it was sent.</summary>
         public string? Current { get; private set; }
 
@@ -208,6 +218,8 @@ namespace Mi_nU.Services
                 }
                 IsPlaying = true;
             }
+            if (IsPlaying)
+                Controls.MediaFocus.Take(this);
             Tick(IsPlaying);
             Changed?.Invoke();
         }

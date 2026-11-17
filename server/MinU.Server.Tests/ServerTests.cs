@@ -865,6 +865,10 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         // Only sound has a length; a length on anything else is dropped.
         var file = await UploadAsync(alice, chat.Id, [1, 2, 3], "a.bin", "application/zip", duration: 7);
         Assert.Null(file.DurationSeconds);
+        // A round video message keeps its length too, and reads as one.
+        var note = await UploadAsync(alice, chat.Id, [0, 0, 0, 0x18, .. "ftypisom"u8.ToArray(), 1, 2, 3], "video.mp4", "video/mp4", duration: 5);
+        Assert.True(note.IsVideoNote);
+        Assert.Equal("Видеосообщение", new MessageDto(1, chat.Id, alice.User, "", DateTimeOffset.UtcNow, Guid.NewGuid(), Attachments: [note]).Summary);
         Assert.Equal(Convert.ToBase64String([0, 5, 31, 12]), voice.Waveform);
         // Levels above 31, or no base64 at all, are not a waveform.
         Assert.Null((await UploadAsync(alice, chat.Id, [1], "v.m4a", "audio/mp4", duration: 1, waveform: Convert.ToBase64String([40]))).Waveform);

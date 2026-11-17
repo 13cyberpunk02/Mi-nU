@@ -11,6 +11,12 @@ namespace Mi_nU
             builder
                 .UseMauiApp<App>()
                 .UseWebRTC()
+                // Round video messages: the camera while recording, and the video in its circle.
+                .ConfigureMauiHandlers(handlers =>
+                {
+                    handlers.AddHandler<Controls.CameraPreview, Controls.CameraPreviewHandler>();
+                    handlers.AddHandler<Controls.VideoSurface, Controls.VideoSurfaceHandler>();
+                })
                 .ConfigureFonts(fonts =>
                 {
                     fonts.AddFont("Inter-Regular.ttf", "Inter");
@@ -38,6 +44,7 @@ namespace Mi_nU
             builder.Services.AddSingleton<Services.FileCache>();
             builder.Services.AddSingleton<Services.VoiceRecorder>();
             builder.Services.AddSingleton<Services.VoicePlayer>();
+            builder.Services.AddSingleton<Services.VideoNoteRecorder>();
             builder.Services.AddSingleton<Services.ChatHubClient>();
             builder.Services.AddSingleton<Services.CallService>();
             builder.Services.AddSingleton<Services.PushNotifications>();

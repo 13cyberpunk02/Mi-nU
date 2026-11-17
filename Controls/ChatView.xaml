@@ -150,6 +150,48 @@
                 </Border>
             </VerticalStackLayout>
         </DataTemplate>
+        <!-- A round video message: the circle itself, no bubble, with the time (and ticks) under it. -->
+        <DataTemplate x:Key="MineNoteTemplate" x:DataType="controls:MessageRow">
+            <VerticalStackLayout Padding="12,0" Margin="{Binding Spacing}">
+                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
+                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
+                </Border>
+                <VerticalStackLayout HorizontalOptions="End" Margin="52,0,0,0" Spacing="2">
+                    <controls:AttachmentView Item="{Binding FirstAttachment}" />
+                    <HorizontalStackLayout HorizontalOptions="End" Spacing="4" Margin="0,0,8,0">
+                        <Label Text="{Binding Status}" Style="{StaticResource Small}" VerticalTextAlignment="Center">
+                            <Label.Triggers>
+                                <DataTrigger TargetType="Label" Binding="{Binding IsFailed}" Value="True">
+                                    <Setter Property="TextColor" Value="{DynamicResource DangerText}" />
+                                </DataTrigger>
+                            </Label.Triggers>
+                        </Label>
+                        <Label Text="{Binding Receipt}" IsVisible="{Binding ShowReceipt}" FontFamily="Icons" FontSize="14"
+                               TextColor="{DynamicResource TextMuted}" VerticalTextAlignment="Center"
+                               SemanticProperties.Description="{Binding ReceiptDescription}">
+                            <Label.Triggers>
+                                <DataTrigger TargetType="Label" Binding="{Binding Read}" Value="True">
+                                    <Setter Property="TextColor" Value="{DynamicResource AccentText}" />
+                                </DataTrigger>
+                            </Label.Triggers>
+                        </Label>
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </DataTemplate>
+        <DataTemplate x:Key="OtherNoteTemplate" x:DataType="controls:MessageRow">
+            <VerticalStackLayout Padding="12,0" Margin="{Binding Spacing}">
+                <Border Style="{StaticResource DayPill}" IsVisible="{Binding ShowDay}">
+                    <Label Text="{Binding Day}" Style="{StaticResource Small}" />
+                </Border>
+                <VerticalStackLayout HorizontalOptions="Start" Margin="0,0,52,0" Spacing="2">
+                    <Label Text="{Binding Sender}" IsVisible="{Binding ShowSenderName}" Margin="8,0"
+                           FontFamily="InterSemiBold" FontSize="13" TextColor="{DynamicResource AccentText}" />
+                    <controls:AttachmentView Item="{Binding FirstAttachment}" />
+                    <Label Text="{Binding Status}" Style="{StaticResource Small}" Margin="8,0" />
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </DataTemplate>
         <!-- A change to the group: a quiet line in the middle, like the day above messages. -->
         <DataTemplate x:Key="SystemTemplate" x:DataType="controls:MessageRow">
             <VerticalStackLayout Padding="24,0" Margin="{Binding Spacing}" Spacing="8">
@@ -168,7 +210,9 @@
                                           MineFailed="{StaticResource MineFailedTemplate}"
                                           Other="{StaticResource OtherTemplate}"
                                           MineCall="{StaticResource MineCallTemplate}"
-                                          OtherCall="{StaticResource OtherCallTemplate}" />
+                                          OtherCall="{StaticResource OtherCallTemplate}"
+                                          MineNote="{StaticResource MineNoteTemplate}"
+                                          OtherNote="{StaticResource OtherNoteTemplate}" />
     </ContentView.Resources>
 
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
@@ -212,7 +256,7 @@
         <Label Grid.Row="3" x:Name="ErrorLabel" AutomationId="ChatError" IsVisible="False" Margin="16,4" Style="{StaticResource Error}" />
 
         <Grid Grid.Row="4" BackgroundColor="{DynamicResource Surface}" Padding="12,8">
-            <Grid x:Name="Composer" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
+            <Grid x:Name="Composer" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
                 <!-- Photos: the text typed meanwhile goes along as their caption. -->
                 <Button x:Name="AttachButton" AutomationId="ChatAttach" Text="{x:Static themes:Icons.Paperclip}" Style="{StaticResource IconButton}"
                         SemanticProperties.Description="Прикрепить фото или файл" VerticalOptions="End" Clicked="OnAttachClicked" />
@@ -220,8 +264,11 @@
                     <Entry x:Name="MessageEntry" AutomationId="ChatInput" Placeholder="Сообщение" Keyboard="Chat" ReturnType="Send"
                            Completed="OnSendClicked" TextChanged="OnMessageTextChanged" />
                 </Border>
-                <!-- With nothing typed, the same place records a voice message. -->
-                <Grid Grid.Column="2" VerticalOptions="End">
+                <!-- With nothing typed: a round video message, or in the send button's place, a voice message. -->
+                <Button Grid.Column="2" x:Name="VideoNoteButton" AutomationId="ChatVideoNote" Text="{x:Static themes:Icons.Camera}"
+                        Style="{StaticResource IconButton}" VerticalOptions="End"
+                        SemanticProperties.Description="Записать видеосообщение" Clicked="OnVideoNoteClicked" />
+                <Grid Grid.Column="3" VerticalOptions="End">
                     <Button x:Name="SendButton" AutomationId="ChatSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
                             SemanticProperties.Description="Отправить" IsVisible="False" Clicked="OnSendClicked" />
                     <Button x:Name="RecordButton" AutomationId="ChatRecord" Text="{x:Static themes:Icons.Mic}" Style="{StaticResource FilledIconButton}"
@@ -242,6 +289,34 @@
                 <Button Grid.Column="2" AutomationId="ChatRecordSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
                         SemanticProperties.Description="Отправить голосовое сообщение" Clicked="OnRecordSendClicked" />
             </Grid>
+        </Grid>
+
+        <!--
+            Recording a round video message: over the whole chat, the camera in a circle (mirrored, as a mirror shows
+            one's face), a ring filling towards the one-minute limit, the time, and cancel or send.
+        -->
+        <Grid Grid.RowSpan="5" x:Name="VideoNoteOverlay" IsVisible="False" BackgroundColor="#E60E1114">
+            <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="20">
+                <Grid WidthRequest="276" HeightRequest="276" HorizontalOptions="Center">
+                    <Border WidthRequest="260" HeightRequest="260" StrokeThickness="0" StrokeShape="Ellipse" BackgroundColor="#262D33"
+                            HorizontalOptions="Center" VerticalOptions="Center">
+                        <controls:CameraPreview x:Name="NotePreview" ScaleX="-1" />
+                    </Border>
+                    <controls:RingProgress x:Name="NoteRing" Color="{StaticResource Danger}" Thickness="5" />
+                </Grid>
+                <HorizontalStackLayout HorizontalOptions="Center" Spacing="8">
+                    <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="5" Color="{StaticResource Danger}" VerticalOptions="Center" />
+                    <Label x:Name="NoteTime" AutomationId="VideoNoteRecordTime" Text="0:00" FontFamily="InterSemiBold" FontSize="17"
+                           TextColor="{StaticResource CallText}" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+                <HorizontalStackLayout HorizontalOptions="Center" Spacing="40">
+                    <Button AutomationId="VideoNoteCancel" Text="{x:Static themes:Icons.Trash}" Style="{StaticResource CallButton}"
+                            SemanticProperties.Description="Отменить видеосообщение" Clicked="OnVideoNoteCancelClicked" />
+                    <Button AutomationId="VideoNoteSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource CallButton}"
+                            BackgroundColor="{StaticResource CallAccent}"
+                            SemanticProperties.Description="Отправить видеосообщение" Clicked="OnVideoNoteSendClicked" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
         </Grid>
     </Grid>
 

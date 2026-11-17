@@ -90,10 +90,160 @@ namespace Mi_nU.Controls
                     new VerticalStackLayout { Spacing = 2, VerticalOptions = LayoutOptions.Center, Children = { _voiceWave, _voiceTime } }.Column(1),
                 },
             };
-            Loaded += (_, _) => Player.Changed += ShowPlayback;
-            Unloaded += (_, _) => Player.Changed -= ShowPlayback;
+            Loaded += (_, _) =>
+            {
+                Player.Changed += ShowPlayback;
+                MediaFocus.Taken += OnMediaTaken;
+            };
+            Unloaded += (_, _) =>
+            {
+                Player.Changed -= ShowPlayback;
+                MediaFocus.Taken -= OnMediaTaken;
+                // Off screen, it stops rather than plays on unseen.
+                if (_noteSurface.IsPlaying)
+                    StopNote();
+            };
+
+            // A round video message: the video in its circle, a ring that fills as it plays, a play mark while it
+            // doesn't, and its length under it.
+            _noteRing.SetDynamicResource(RingProgress.ColorProperty, "Accent");
+            _notePlay.SetDynamicResource(Label.TextColorProperty, "OnAccent");
+            var playMark = new Border
+            {
+                WidthRequest = 48,
+                HeightRequest = 48,
+                StrokeThickness = 0,
+                StrokeShape = new Microsoft.Maui.Controls.Shapes.Ellipse(),
+                BackgroundColor = Color.FromArgb("#80000000"),
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+                Content = _notePlay,
+            };
+            _notePlayMark = playMark;
+            var circle = new Border
+            {
+                WidthRequest = NoteSize,
+                HeightRequest = NoteSize,
+                StrokeThickness = 0,
+                StrokeShape = new Microsoft.Maui.Controls.Shapes.Ellipse(),
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+                Content = _noteSurface,
+            };
+            circle.SetDynamicResource(BackgroundColorProperty, "Pill");
+            _noteTime.SetDynamicResource(Label.TextColorProperty, "TextMuted");
+            _note = new VerticalStackLayout
+            {
+                Spacing = 4,
+                AutomationId = "VideoNote",
+                Children =
+                {
+                    new Grid { WidthRequest = NoteSize + 10, HeightRequest = NoteSize + 10, Children = { circle, _noteRing, playMark } },
+                    _noteTime,
+                },
+            };
+            _noteSurface.Ended += (_, _) => StopNote();
 
             GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(async () => await OpenAsync()) });
+        }
+
+        const double NoteSize = 220;
+        readonly VerticalStackLayout _note;
+        readonly VideoSurface _noteSurface = new();
+        readonly RingProgress _noteRing = new() { Thickness = 3 };
+        readonly Border _notePlayMark;
+        readonly Label _notePlay = new()
+        {
+            Text = Themes.Icons.Play, FontFamily = "Icons", FontSize = 22,
+            HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center,
+        };
+        readonly Label _noteTime = new() { FontSize = 12, Margin = new Thickness(6, 0), AutomationId = "VideoNoteTime" };
+        IDispatcherTimer? _noteTicker;
+
+        void OnMediaTaken(object owner)
+        {
+            if (owner != this && _noteSurface.IsPlaying)
+                StopNote();
+        }
+
+        /// <summary>The play mark, the ring and the time follow the video; a screen reader hears the state.</summary>
+        void ShowNote()
+        {
+            if (Item is not { File.IsVideoNote: true } item)
+                return;
+            var length = item.File.DurationSeconds ?? 0;
+            var playing = _noteSurface.IsPlaying;
+            var position = _noteSurface.Position;
+            _notePlayMark.IsVisible = !playing;
+            _noteRing.Progress = playing && length > 0 ? position.TotalSeconds / length : 0;
+            _noteTime.Text = playing ? Formatting.Duration((int)position.TotalSeconds) : Formatting.Duration(length);
+            var description = $"Видеосообщение, {Formatting.Duration(length)}" + (playing ? ", играет" : ", нажмите, чтобы посмотреть");
+            if (SemanticProperties.GetDescription(this) != description)
+                SemanticProperties.SetDescription(this, description);
+        }
+
+        void StopNote()
+        {
+            _noteSurface.Stop();
+            _noteTicker?.Stop();
+            ShowNote();
+        }
+
+        /// <summary>Plays with sound from the start, or stops; the first time, the video is fetched and kept like any file.</summary>
+        async Task ToggleNoteAsync(AttachmentItem item)
+        {
+            if (_noteSurface.IsPlaying)
+            {
+                StopNote();
+                return;
+            }
+            if (_noteSurface.Path is null)
+            {
+                if (_fetching)
+                    return;
+                _fetching = true;
+                try
+                {
+                    _noteTime.Text = "…";
+                    _noteSurface.Path = item.LocalPath ?? await Cache.GetAsync(item.File);
+                }
+                catch (ApiException)
+                {
+                    _noteTime.Text = "Не загрузилось";
+                    return;
+                }
+                finally
+                {
+                    _fetching = false;
+                }
+                if (Item != item)
+                    return;
+            }
+            MediaFocus.Take(this);
+            _noteSurface.Play();
+            if (_noteTicker is null)
+            {
+                _noteTicker = Dispatcher.CreateTimer();
+                _noteTicker.Interval = TimeSpan.FromMilliseconds(100);
+                _noteTicker.Tick += (_, _) => ShowNote();
+            }
+            _noteTicker.Start();
+            ShowNote();
+        }
+
+        /// <summary>The first frame shows as soon as the video is here; it is fetched with the chat like a photo.</summary>
+        async Task LoadNoteAsync(AttachmentItem item, CancellationToken cancel)
+        {
+            try
+            {
+                var path = await Cache.GetAsync(item.File);
+                if (!cancel.IsCancellationRequested && _noteSurface.Path is null)
+                    _noteSurface.Path = path;
+            }
+            catch (ApiException)
+            {
+                // A tap tries again.
+            }
         }
 
         readonly Grid _voice;
@@ -149,8 +299,25 @@ namespace Mi_nU.Controls
             _loading?.Cancel();
             _loading = null;
             _image.Source = null;
+            if (_noteSurface.IsPlaying)
+                StopNote();
+            _noteSurface.Path = null;
             if (item is null)
                 return;
+
+            if (item.File.IsVideoNote)
+            {
+                Content = _note;
+                ShowNote();
+                if (item.LocalPath is { } localVideo)
+                    _noteSurface.Path = localVideo;
+                else
+                {
+                    var loadingNote = _loading = new CancellationTokenSource();
+                    _ = LoadNoteAsync(item, loadingNote.Token);
+                }
+                return;
+            }
 
             if (item.File.IsVoice)
             {
@@ -218,6 +385,11 @@ namespace Mi_nU.Controls
             if (Item is { File.IsVoice: true } voice)
             {
                 await PlayAsync(voice);
+                return;
+            }
+            if (Item is { File.IsVideoNote: true } note)
+            {
+                await ToggleNoteAsync(note);
                 return;
             }
             if (Item is not { } item || _opening || Shell.Current is not { } shell || shell.CurrentPage is Pages.PhotoPage)

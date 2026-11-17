@@ -56,8 +56,8 @@ public static partial class Endpoints
                 Size = file.Length,
                 Width = isImage && width is > 0 and <= 20_000 ? width : null,
                 Height = isImage && height is > 0 and <= 20_000 ? height : null,
-                // Sound only, up to an hour: anything longer isn't a voice message.
-                DurationSeconds = contentType.StartsWith("audio/") && duration is >= 0 and <= 3600 ? duration : null,
+                // Sound or video only, up to an hour: a voice message or a round video message.
+                DurationSeconds = (contentType.StartsWith("audio/") || contentType.StartsWith("video/")) && duration is >= 0 and <= 3600 ? duration : null,
                 Waveform = contentType.StartsWith("audio/") && IsWaveform(waveform) ? waveform : null,
             };
             try

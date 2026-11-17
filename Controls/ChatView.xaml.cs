@@ -36,6 +36,10 @@ namespace Mi_nU.Controls
         public Thickness FooterPadding => IsMedia ? new Thickness(12, 6, 12, 8) : new Thickness(0);
         public Thickness NamePadding => IsMedia ? new Thickness(12, 8, 12, 6) : new Thickness(0);
         public double AttachmentSpacing => IsMedia ? 2 : 4;
+        /// <summary>A round video message: no bubble, only the circle with the time under it.</summary>
+        public bool IsVideoNote => Attachments is { Count: 1 } files && files[0].File.IsVideoNote;
+        public AttachmentItem? FirstAttachment => Attachments is { Count: > 0 } files ? files[0] : null;
+        public bool IsFailed => State == MessageState.Failed;
         public bool HasText => Text.Length > 0;
         /// <summary>Set for a call record, which shows as a call instead of text.</summary>
         public CallSummary? Call { get; init; }
@@ -75,12 +79,16 @@ namespace Mi_nU.Controls
         public DataTemplate? MineCall { get; set; }
         public DataTemplate? OtherCall { get; set; }
         public DataTemplate? System { get; set; }
+        public DataTemplate? MineNote { get; set; }
+        public DataTemplate? OtherNote { get; set; }
 
         protected override DataTemplate? OnSelectTemplate(object item, BindableObject container) => item switch
         {
             MessageRow { IsSystem: true } => System,
             MessageRow { Call: not null, IsMine: true } => MineCall,
             MessageRow { Call: not null } => OtherCall,
+            MessageRow { IsVideoNote: true, IsMine: true } => MineNote,
+            MessageRow { IsVideoNote: true } => OtherNote,
             MessageRow { IsMine: false } => Other,
             MessageRow { State: MessageState.Failed } => MineFailed,
             _ => Mine,
@@ -420,6 +428,7 @@ namespace Mi_nU.Controls
             var typed = !string.IsNullOrWhiteSpace(e.NewTextValue);
             SendButton.IsVisible = typed;
             RecordButton.IsVisible = !typed;
+            VideoNoteButton.IsVisible = !typed;
         }
 
         readonly VoiceRecorder _recorder;
@@ -476,6 +485,95 @@ namespace Mi_nU.Controls
         {
             _player.Stop();
             await FinishRecordingAsync(send: false);
+            await FinishVideoNoteAsync(send: false);
+        }
+
+        readonly VideoNoteRecorder _noteRecorder = IPlatformApplication.Current!.Services.GetRequiredService<VideoNoteRecorder>();
+        IDispatcherTimer? _noteClock;
+
+        async void OnVideoNoteClicked(object? sender, EventArgs e)
+        {
+            if (_chat is null || _noteRecorder.IsRecording || _recorder.IsRecording)
+                return;
+            // The camera is busy in a call, and a message playing would end up in the recording.
+            if (_calls.Phase != CallPhase.Idle)
+            {
+                ShowError("Во время звонка видеосообщение не записать.");
+                return;
+            }
+            _player.Stop();
+            MediaFocus.Take(this);
+            NoteTime.Text = Formatting.Duration(0);
+            NoteRing.Progress = 0;
+            VideoNoteOverlay.IsVisible = true;
+            // The preview's own view comes with the overlay; it must be there for the camera to draw into.
+            await Task.Delay(50);
+            if (await _noteRecorder.StartAsync(NotePreview) is { } problem)
+            {
+                VideoNoteOverlay.IsVisible = false;
+                ShowError(problem);
+                return;
+            }
+            ErrorLabel.IsVisible = false;
+            _noteClock = Dispatcher.CreateTimer();
+            _noteClock.Interval = TimeSpan.FromMilliseconds(100);
+            _noteClock.Tick += async (_, _) =>
+            {
+                var elapsed = _noteRecorder.Elapsed;
+                NoteTime.Text = Formatting.Duration((int)elapsed.TotalSeconds);
+                NoteRing.Progress = elapsed / VideoNoteRecorder.MaxLength;
+                // A minute at most, then it goes as it is.
+                if (elapsed >= VideoNoteRecorder.MaxLength)
+                    await FinishVideoNoteAsync(send: true);
+            };
+            _noteClock.Start();
+        }
+
+        async void OnVideoNoteCancelClicked(object? sender, EventArgs e) => await FinishVideoNoteAsync(send: false);
+
+        async void OnVideoNoteSendClicked(object? sender, EventArgs e) => await FinishVideoNoteAsync(send: true);
+
+        /// <summary>Back to the chat; the video goes out like a file, shown at once and retried the same way.</summary>
+        async Task FinishVideoNoteAsync(bool send)
+        {
+            if (!_noteRecorder.IsRecording)
+            {
+                VideoNoteOverlay.IsVisible = false;
+                return;
+            }
+            _noteClock?.Stop();
+            _noteClock = null;
+            if (!send || _chat is not { } chat)
+            {
+                await _noteRecorder.CancelAsync();
+                VideoNoteOverlay.IsVisible = false;
+                return;
+            }
+
+            var note = await _noteRecorder.StopAsync();
+            VideoNoteOverlay.IsVisible = false;
+            if (note is not { } video)
+            {
+                ShowError("Видеосообщение слишком короткое или не получилось.");
+                return;
+            }
+            var bytes = await File.ReadAllBytesAsync(video.Path);
+            if (_chat?.Id != chat.Id || bytes.Length > Limits.FileMax)
+            {
+                VoiceRecorder.TryDelete(video.Path);
+                return;
+            }
+            const string name = "video.mp4";
+            const string type = "video/mp4";
+            var row = new MessageRow(null, Guid.NewGuid(), "", _auth.Session?.User.DisplayName ?? "", false, true, DateTimeOffset.UtcNow, MessageState.Sending)
+            {
+                Attachments = [new AttachmentItem(new FileDto(Guid.Empty, name, type, bytes.Length, DurationSeconds: video.Seconds), video.Path)],
+            };
+            _outgoing[row.ClientMessageId] = [new OutgoingFile(bytes, name, type, null, video.Path, video.Seconds)];
+            _rows.Add(row);
+            Relink(_rows.Count - 1);
+            ScrollToEnd();
+            await SendFilesAsync(chat, row);
         }
 
         /// <summary>Back to typing; the recording goes out like a file, so it shows at once and is retried the same way.</summary>

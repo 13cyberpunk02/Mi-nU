@@ -65,6 +65,7 @@ public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, Date
                 return Text;
             var photos = files.Count(file => file.IsImage);
             var what = files.Count == 1 && files[0].IsVoice ? "Голосовое сообщение"
+                : files.Count == 1 && files[0].IsVideoNote ? "Видеосообщение"
                 : photos == files.Count ? photos == 1 ? "Фото" : $"Фото: {photos}"
                 : files.Count == 1 ? $"Файл · {files[0].Name}" : $"Файлы: {files.Count}";
             return Text.Length > 0 ? $"{what} · {Text}" : what;
@@ -128,6 +129,10 @@ public record FileDto(Guid Id, string Name, string ContentType, long Size, int? 
     /// <summary>Recorded in the chat: sound with a length, played in place rather than opened as a file.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsVoice => ContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) && DurationSeconds is not null;
+
+    /// <summary>A round video message recorded in the chat: video with a length, played in its circle in place.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsVideoNote => ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) && DurationSeconds is not null;
 }
 
 /// <summary>Downloads the file until <see cref="ExpiresAt"/>, without any other sign-in; ask for a new one after that.</summary>
