@@ -36,6 +36,8 @@ namespace Mi_nU
             builder.Services.AddSingleton<Services.AuthService>();
             builder.Services.AddSingleton<Services.ChatApi>();
             builder.Services.AddSingleton<Services.FileCache>();
+            builder.Services.AddSingleton<Services.VoiceRecorder>();
+            builder.Services.AddSingleton<Services.VoicePlayer>();
             builder.Services.AddSingleton<Services.ChatHubClient>();
             builder.Services.AddSingleton<Services.CallService>();
             builder.Services.AddSingleton<Services.PushNotifications>();

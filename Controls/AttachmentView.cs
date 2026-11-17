@@ -57,7 +57,77 @@ namespace Mi_nU.Controls
             };
             _file.SetDynamicResource(BackgroundColorProperty, "Pill");
 
+            // A voice message: a round play button, how far it has played, and its length.
+            var button = new Border
+            {
+                WidthRequest = 36,
+                HeightRequest = 36,
+                StrokeThickness = 0,
+                StrokeShape = new Microsoft.Maui.Controls.Shapes.Ellipse(),
+                Content = _voiceIcon,
+            };
+            button.SetDynamicResource(BackgroundColorProperty, "Accent");
+            _voiceIcon.SetDynamicResource(Label.TextColorProperty, "OnAccent");
+            _voiceProgress.SetDynamicResource(ProgressBar.ProgressColorProperty, "Accent");
+            _voiceTime.SetDynamicResource(Label.TextColorProperty, "TextMuted");
+            _voice = new Border
+            {
+                StrokeThickness = 0,
+                Padding = new Thickness(6, 6, 12, 6),
+                StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 24 },
+                WidthRequest = 240,
+                AutomationId = "VoiceMessage",
+                Content = new Grid
+                {
+                    ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)],
+                    ColumnSpacing = 10,
+                    Children = { button, _voiceProgress.Column(1), _voiceTime.Column(2) },
+                },
+            };
+            _voice.SetDynamicResource(BackgroundColorProperty, "Pill");
+            Loaded += (_, _) => Player.Changed += ShowPlayback;
+            Unloaded += (_, _) => Player.Changed -= ShowPlayback;
+
             GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(async () => await OpenAsync()) });
+        }
+
+        readonly Border _voice;
+        readonly Label _voiceIcon = new()
+        {
+            Text = Themes.Icons.Play, FontFamily = "Icons", FontSize = 18,
+            HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center,
+        };
+        readonly ProgressBar _voiceProgress = new() { VerticalOptions = LayoutOptions.Center };
+        readonly Label _voiceTime = new() { FontSize = 13, VerticalOptions = LayoutOptions.Center, AutomationId = "VoiceTime" };
+
+        static VoicePlayer Player => IPlatformApplication.Current!.Services.GetRequiredService<VoicePlayer>();
+
+        /// <summary>What the player knows this voice message by: its id, or before it is sent, the recording itself.</summary>
+        static string? VoiceKey(AttachmentItem? item) => item is null ? null : item.File.Id != Guid.Empty ? item.File.Id.ToString() : item.LocalPath;
+
+        /// <summary>The play button and progress follow the player, which plays one message at a time.</summary>
+        void ShowPlayback()
+        {
+            if (Item is not { File.IsVoice: true } item)
+                return;
+            var length = item.File.DurationSeconds ?? 0;
+            var current = VoiceKey(item) is { } key && Player.Current == key;
+            // A screen reader hears the state, not the ticking position.
+            var description = $"Голосовое сообщение, {Formatting.Duration(length)}"
+                + (!current ? ", нажмите, чтобы прослушать" : Player.IsPlaying ? ", играет" : ", на паузе");
+            if (SemanticProperties.GetDescription(this) != description)
+                SemanticProperties.SetDescription(this, description);
+            if (!current)
+            {
+                _voiceIcon.Text = Themes.Icons.Play;
+                _voiceProgress.Progress = 0;
+                _voiceTime.Text = Formatting.Duration(length);
+                return;
+            }
+            var position = Player.Position;
+            _voiceIcon.Text = Player.IsPlaying ? Themes.Icons.Pause : Themes.Icons.Play;
+            _voiceProgress.Progress = length > 0 ? Math.Clamp(position.TotalSeconds / length, 0, 1) : 0;
+            _voiceTime.Text = Formatting.Duration((int)position.TotalSeconds);
         }
 
         public AttachmentItem? Item
@@ -76,6 +146,13 @@ namespace Mi_nU.Controls
             _image.Source = null;
             if (item is null)
                 return;
+
+            if (item.File.IsVoice)
+            {
+                Content = _voice;
+                ShowPlayback();
+                return;
+            }
 
             if (!item.File.IsImage)
             {
@@ -123,6 +200,11 @@ namespace Mi_nU.Controls
 
         async Task OpenAsync()
         {
+            if (Item is { File.IsVoice: true } voice)
+            {
+                await PlayAsync(voice);
+                return;
+            }
             if (Item is not { } item || _opening || Shell.Current is not { } shell || shell.CurrentPage is Pages.PhotoPage)
                 return;
             _opening = true;
@@ -154,6 +236,42 @@ namespace Mi_nU.Controls
             finally
             {
                 _opening = false;
+            }
+        }
+
+        bool _fetching;
+
+        /// <summary>Plays, pauses or resumes; the first time, the recording is fetched and kept like any file.</summary>
+        async Task PlayAsync(AttachmentItem item)
+        {
+            if (_fetching || VoiceKey(item) is not { } key)
+                return;
+            _fetching = true;
+            try
+            {
+                string path;
+                if (item.LocalPath is { } local)
+                    path = local;
+                else
+                {
+                    _voiceTime.Text = "…";
+                    path = await Cache.GetAsync(item.File);
+                }
+                await Player.ToggleAsync(key, path);
+            }
+            catch (ApiException)
+            {
+                _voiceTime.Text = "Не загрузилось";
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                // A damaged file, or no way to play sound right now.
+                System.Diagnostics.Debug.WriteLine($"Voice message didn't play: {e}");
+                _voiceTime.Text = "Не воспроизводится";
+            }
+            finally
+            {
+                _fetching = false;
             }
         }
 

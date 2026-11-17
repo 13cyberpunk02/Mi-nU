@@ -41,6 +41,8 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
+    <!-- Voice messages record through the system; the app must ask for the microphone like any packaged app. -->
+    <DeviceCapability Name="microphone" />
   </Capabilities>
 
 </Package>

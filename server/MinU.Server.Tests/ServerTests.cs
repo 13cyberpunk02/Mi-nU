@@ -618,7 +618,7 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
     static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, 1, 2, 3, 4];
 
     static async Task<FileDto> UploadAsync(Client client, Guid chatId, byte[] bytes, string name, string contentType,
-        int? width = null, int? height = null)
+        int? width = null, int? height = null, int? duration = null)
     {
         using var form = new MultipartFormDataContent();
         var file = new ByteArrayContent(bytes);
@@ -628,6 +628,8 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
             form.Add(new StringContent(w.ToString()), "width");
         if (height is { } h)
             form.Add(new StringContent(h.ToString()), "height");
+        if (duration is { } d)
+            form.Add(new StringContent(d.ToString()), "duration");
         var response = await client.Http.PostAsync($"/api/chats/{chatId}/files", form);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<FileDto>())!;
@@ -845,6 +847,27 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         Assert.Equal(HttpStatusCode.BadRequest, (await PutAvatarAsync(alice, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "image/png")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await PutAvatarAsync(alice, "<svg/>"u8.ToArray(), "image/svg+xml")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await alice.Http.PutAsJsonAsync("/api/me", new UpdateProfileRequest("   "))).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_voice_message_keeps_its_length_and_reads_as_one()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var chat = await alice.DirectChatWithAsync(bob);
+
+        var voice = await UploadAsync(alice, chat.Id, [0, 0, 0, 0x18, .. "ftypM4A "u8.ToArray(), 1, 2, 3], "voice.m4a", "audio/mp4", duration: 7);
+        Assert.Equal(("audio/mp4", (int?)7), (voice.ContentType, voice.DurationSeconds));
+        Assert.True(voice.IsVoice);
+        // Only sound has a length; a length on anything else is dropped.
+        var file = await UploadAsync(alice, chat.Id, [1, 2, 3], "a.bin", "application/zip", duration: 7);
+        Assert.Null(file.DurationSeconds);
+
+        var bobGot = bob.Next<MessageDto>("MessageReceived");
+        await alice.Hub.InvokeAsync<MessageDto>("SendAttachments", chat.Id, "", Guid.NewGuid(), new[] { voice.Id });
+        var received = await bobGot;
+        Assert.Equal("Голосовое сообщение", received.Summary);
+        Assert.Equal(7, Assert.Single(received.Attachments!).DurationSeconds);
     }
 
     [Fact]

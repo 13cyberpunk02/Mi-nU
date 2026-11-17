@@ -200,6 +200,9 @@ namespace MinU.Server.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("Height")
                         .HasColumnType("integer");
 

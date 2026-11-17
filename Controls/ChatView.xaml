@@ -201,15 +201,33 @@
         <Label Grid.Row="3" x:Name="ErrorLabel" AutomationId="ChatError" IsVisible="False" Margin="16,4" Style="{StaticResource Error}" />
 
         <Grid Grid.Row="4" BackgroundColor="{DynamicResource Surface}" Padding="12,8">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
+            <Grid x:Name="Composer" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
                 <!-- Photos: the text typed meanwhile goes along as their caption. -->
                 <Button x:Name="AttachButton" AutomationId="ChatAttach" Text="{x:Static themes:Icons.Paperclip}" Style="{StaticResource IconButton}"
                         SemanticProperties.Description="Прикрепить фото или файл" VerticalOptions="End" Clicked="OnAttachClicked" />
                 <Border Grid.Column="1" Style="{StaticResource FilledField}" StrokeShape="RoundRectangle 22">
-                    <Entry x:Name="MessageEntry" AutomationId="ChatInput" Placeholder="Сообщение" Keyboard="Chat" ReturnType="Send" Completed="OnSendClicked" />
+                    <Entry x:Name="MessageEntry" AutomationId="ChatInput" Placeholder="Сообщение" Keyboard="Chat" ReturnType="Send"
+                           Completed="OnSendClicked" TextChanged="OnMessageTextChanged" />
                 </Border>
-                <Button Grid.Column="2" AutomationId="ChatSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
-                        SemanticProperties.Description="Отправить" VerticalOptions="End" Clicked="OnSendClicked" />
+                <!-- With nothing typed, the same place records a voice message. -->
+                <Grid Grid.Column="2" VerticalOptions="End">
+                    <Button x:Name="SendButton" AutomationId="ChatSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
+                            SemanticProperties.Description="Отправить" IsVisible="False" Clicked="OnSendClicked" />
+                    <Button x:Name="RecordButton" AutomationId="ChatRecord" Text="{x:Static themes:Icons.Mic}" Style="{StaticResource FilledIconButton}"
+                            SemanticProperties.Description="Записать голосовое сообщение" Clicked="OnRecordClicked" />
+                </Grid>
+            </Grid>
+
+            <Grid x:Name="RecordingBar" IsVisible="False" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" MaximumWidthRequest="{StaticResource ReadableWidth}">
+                <Button AutomationId="ChatRecordCancel" Text="{x:Static themes:Icons.Trash}" Style="{StaticResource IconButton}"
+                        TextColor="{DynamicResource DangerText}" SemanticProperties.Description="Отменить запись" Clicked="OnRecordCancelClicked" />
+                <HorizontalStackLayout Grid.Column="1" Spacing="10" VerticalOptions="Center" Padding="8,0">
+                    <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="5" Color="{DynamicResource DangerText}" VerticalOptions="Center" />
+                    <Label x:Name="RecordingTime" AutomationId="ChatRecordTime" Text="0:00" Style="{StaticResource Name}" VerticalOptions="Center" />
+                    <Label Text="Запись…" Style="{StaticResource Caption}" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+                <Button Grid.Column="2" AutomationId="ChatRecordSend" Text="{x:Static themes:Icons.Send}" Style="{StaticResource FilledIconButton}"
+                        SemanticProperties.Description="Отправить голосовое сообщение" Clicked="OnRecordSendClicked" />
             </Grid>
         </Grid>
     </Grid>

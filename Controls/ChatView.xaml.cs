@@ -110,6 +110,8 @@ namespace Mi_nU.Controls
             _activity = services.GetRequiredService<AppActivity>();
             _files = services.GetRequiredService<FileCache>();
             _presence = services.GetRequiredService<PresenceService>();
+            _recorder = services.GetRequiredService<VoiceRecorder>();
+            _player = services.GetRequiredService<VoicePlayer>();
             Messages.ItemsSource = _rows;
             MessageEntry.MaxLength = Limits.MessageMax;
             // "5 мин назад" has to keep counting while the chat stays open.
@@ -137,6 +139,7 @@ namespace Mi_nU.Controls
             if (_chat?.Id == chat.Id)
                 return;
 
+            _ = StopVoiceAsync();
             _chat = chat;
             _readUpTo = chat.ReadUpTo;
             _markedUpTo = 0;
@@ -161,6 +164,7 @@ namespace Mi_nU.Controls
         /// <summary>Empties the view, for a chat the user is no longer in.</summary>
         public void Close()
         {
+            _ = StopVoiceAsync();
             _chat = null;
             _rows.Clear();
             MessageEntry.Text = "";
@@ -246,6 +250,8 @@ namespace Mi_nU.Controls
                 return;
 
             _active = false;
+            // A call or another page coming up ends whatever was being recorded or played; nothing half-made is sent.
+            _ = StopVoiceAsync();
             _hub.MessageReceived -= OnMessageReceived;
             _hub.ChatRead -= OnChatRead;
             _hub.Connected -= OnConnected;
@@ -394,6 +400,93 @@ namespace Mi_nU.Controls
             await SendAsync(_chat, row);
         }
 
+        void OnMessageTextChanged(object? sender, TextChangedEventArgs e)
+        {
+            var typed = !string.IsNullOrWhiteSpace(e.NewTextValue);
+            SendButton.IsVisible = typed;
+            RecordButton.IsVisible = !typed;
+        }
+
+        readonly VoiceRecorder _recorder;
+        readonly VoicePlayer _player;
+        IDispatcherTimer? _recordingClock;
+
+        async void OnRecordClicked(object? sender, EventArgs e)
+        {
+            if (_chat is null || _recorder.IsRecording)
+                return;
+            // Recording over a message playing would record it too.
+            _player.Stop();
+            if (!await _recorder.StartAsync())
+            {
+                ShowError("Не удалось включить микрофон. Проверьте, что доступ к нему разрешён.");
+                return;
+            }
+            ErrorLabel.IsVisible = false;
+            Composer.IsVisible = false;
+            RecordingBar.IsVisible = true;
+            RecordingTime.Text = Formatting.Duration(0);
+            _recordingClock = Dispatcher.CreateTimer();
+            _recordingClock.Interval = TimeSpan.FromMilliseconds(250);
+            _recordingClock.Tick += async (_, _) =>
+            {
+                RecordingTime.Text = Formatting.Duration((int)_recorder.Elapsed.TotalSeconds);
+                // A very long one goes as it is rather than growing without end.
+                if (_recorder.Elapsed >= VoiceRecorder.MaxLength)
+                    await FinishRecordingAsync(send: true);
+            };
+            _recordingClock.Start();
+        }
+
+        async void OnRecordCancelClicked(object? sender, EventArgs e) => await FinishRecordingAsync(send: false);
+
+        async void OnRecordSendClicked(object? sender, EventArgs e) => await FinishRecordingAsync(send: true);
+
+        async Task StopVoiceAsync()
+        {
+            _player.Stop();
+            await FinishRecordingAsync(send: false);
+        }
+
+        /// <summary>Back to typing; the recording goes out like a file, so it shows at once and is retried the same way.</summary>
+        async Task FinishRecordingAsync(bool send)
+        {
+            if (!_recorder.IsRecording)
+                return;
+            _recordingClock?.Stop();
+            _recordingClock = null;
+            RecordingBar.IsVisible = false;
+            Composer.IsVisible = true;
+            if (!send || _chat is not { } chat)
+            {
+                await _recorder.CancelAsync();
+                return;
+            }
+
+            if (await _recorder.StopAsync() is not { } voice)
+            {
+                ShowError("Запись слишком короткая или не получилась.");
+                return;
+            }
+            var bytes = await File.ReadAllBytesAsync(voice.Path);
+            if (_chat?.Id != chat.Id)
+            {
+                VoiceRecorder.TryDelete(voice.Path);
+                return;
+            }
+            const string name = "voice.m4a";
+            const string type = "audio/mp4";
+            var row = new MessageRow(null, Guid.NewGuid(), "", _auth.Session?.User.DisplayName ?? "", false, true, DateTimeOffset.UtcNow, MessageState.Sending)
+            {
+                Attachments = [new AttachmentItem(new FileDto(Guid.Empty, name, type, bytes.Length, DurationSeconds: voice.Seconds), voice.Path)],
+            };
+            _outgoing[row.ClientMessageId] = [new OutgoingFile(bytes, name, type, null, voice.Path, voice.Seconds)];
+            _rows.Add(row);
+            Relink(_rows.Count - 1);
+            ScrollToEnd();
+            await SendFilesAsync(chat, row);
+        }
+
         async void OnMessageSelected(object? sender, SelectionChangedEventArgs e)
         {
             if (e.CurrentSelection.FirstOrDefault() is not MessageRow row)
@@ -418,8 +511,10 @@ namespace Mi_nU.Controls
         }
 
         /// <summary>A picked file on its way: kept with what is known of it, so a retry uploads only what didn't make it.</summary>
-        sealed class OutgoingFile(byte[] bytes, string name, string contentType, (int Width, int Height)? size, string localPath)
+        sealed class OutgoingFile(byte[] bytes, string name, string contentType, (int Width, int Height)? size, string localPath,
+            int? durationSeconds = null)
         {
+            public int? DurationSeconds => durationSeconds;
             public byte[] Bytes => bytes;
             public string Name => name;
             public string ContentType => contentType;
@@ -615,7 +710,8 @@ namespace Mi_nU.Controls
             {
                 foreach (var outgoing in files.Where(outgoing => outgoing.Uploaded is null))
                 {
-                    var file = await _api.UploadFileAsync(chat.Id, outgoing.Bytes, outgoing.Name, outgoing.ContentType, outgoing.Size?.Width, outgoing.Size?.Height);
+                    var file = await _api.UploadFileAsync(chat.Id, outgoing.Bytes, outgoing.Name, outgoing.ContentType,
+                        outgoing.Size?.Width, outgoing.Size?.Height, outgoing.DurationSeconds);
                     // This device has the bytes already: they are never downloaded back.
                     _files.Put(file, outgoing.Bytes);
                     outgoing.Uploaded = file;

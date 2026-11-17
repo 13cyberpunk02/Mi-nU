@@ -97,6 +97,8 @@ public class StoredFile
     /// <summary>A picture's size in pixels, as the uploading app measured it, so a chat can lay it out before it loads.</summary>
     public int? Width { get; set; }
     public int? Height { get; set; }
+    /// <summary>A voice message's length in seconds, as the recording app measured it.</summary>
+    public int? DurationSeconds { get; set; }
 
     /// <summary>The object's name in storage: random, so one can't be guessed from another.</summary>
     public string Key => Id.ToString("N");

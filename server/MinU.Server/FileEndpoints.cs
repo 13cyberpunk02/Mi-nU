@@ -27,6 +27,7 @@ public static partial class Endpoints
         // Uploads into a chat the user is in. The file isn't shown to anyone until it is sent in a message.
         // A picture comes with its width and height, which the app measured; the server doesn't decode images.
         api.MapPost("/chats/{chatId:guid}/files", async (Guid chatId, IFormFile? file, [FromForm] int? width, [FromForm] int? height,
+            [FromForm] int? duration,
             ChatService chats, AppDbContext db, IFileStorage storage, ILogger<StoredFile> logger, ClaimsPrincipal principal,
             CancellationToken cancel) =>
         {
@@ -55,6 +56,8 @@ public static partial class Endpoints
                 Size = file.Length,
                 Width = isImage && width is > 0 and <= 20_000 ? width : null,
                 Height = isImage && height is > 0 and <= 20_000 ? height : null,
+                // Sound only, up to an hour: anything longer isn't a voice message.
+                DurationSeconds = contentType.StartsWith("audio/") && duration is >= 0 and <= 3600 ? duration : null,
             };
             try
             {

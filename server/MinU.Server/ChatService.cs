@@ -98,7 +98,7 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
         return files.GroupBy(file => file.MessageId!.Value).ToDictionary(group => group.Key, group => group.Select(ToDto).ToList());
     }
 
-    public static FileDto ToDto(StoredFile file) => new(file.Id, file.Name, file.ContentType, file.Size, file.Width, file.Height);
+    public static FileDto ToDto(StoredFile file) => new(file.Id, file.Name, file.ContentType, file.Size, file.Width, file.Height, file.DurationSeconds);
 
     /// <summary>
     /// A message with files uploaded into the chat beforehand. They must be the sender's, in this chat, and not sent yet.

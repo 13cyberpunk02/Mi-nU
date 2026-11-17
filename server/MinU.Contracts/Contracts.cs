@@ -63,8 +63,8 @@ public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, Date
             if (Attachments is not { Count: > 0 } files)
                 return Text;
             var photos = files.Count(file => file.IsImage);
-            var what = photos == files.Count
-                ? photos == 1 ? "Фото" : $"Фото: {photos}"
+            var what = files.Count == 1 && files[0].IsVoice ? "Голосовое сообщение"
+                : photos == files.Count ? photos == 1 ? "Фото" : $"Фото: {photos}"
                 : files.Count == 1 ? $"Файл · {files[0].Name}" : $"Файлы: {files.Count}";
             return Text.Length > 0 ? $"{what} · {Text}" : what;
         }
@@ -115,12 +115,16 @@ public record CallJoinResult(Guid CallId, string ParticipantId, IReadOnlyList<Ca
 
 /// <summary>
 /// An uploaded file. Its bytes are fetched through a short-lived link, see <see cref="FileLinkDto"/>.
-/// A picture has its size in pixels, for laying it out before it loads.
+/// A picture has its size in pixels, for laying it out before it loads; a voice message its length in seconds.
 /// </summary>
-public record FileDto(Guid Id, string Name, string ContentType, long Size, int? Width = null, int? Height = null)
+public record FileDto(Guid Id, string Name, string ContentType, long Size, int? Width = null, int? Height = null, int? DurationSeconds = null)
 {
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsImage => ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Recorded in the chat: sound with a length, played in place rather than opened as a file.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsVoice => ContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) && DurationSeconds is not null;
 }
 
 /// <summary>Downloads the file until <see cref="ExpiresAt"/>, without any other sign-in; ask for a new one after that.</summary>

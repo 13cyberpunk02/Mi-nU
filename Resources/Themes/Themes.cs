@@ -65,6 +65,9 @@ namespace Mi_nU.Themes
         public const string ImageOff = "\uE1C0";
         public const string Camera = "\uE068";
         public const string Image = "\uE0F9";
+        public const string Play = "\uE140";
+        public const string Pause = "\uE132";
+        public const string Trash = "\uE18E";
         public const string Close = "";
         public const string LogOut = "";
     }
