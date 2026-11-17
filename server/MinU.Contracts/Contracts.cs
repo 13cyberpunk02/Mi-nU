@@ -24,9 +24,10 @@ public record AddMembersRequest(IReadOnlyList<Guid> UserIds);
 /// <see cref="UnreadCount"/> counts the others' messages the viewer hasn't read yet;
 /// <see cref="ReadUpTo"/> is the newest message someone else has read, so the viewer's own messages up to it show as read.
 /// <see cref="OwnerId"/> is the group's owner, the only one who may remove others; null for a direct chat.
+/// <see cref="AvatarId"/> is a group's picture; a direct chat shows the other person's instead.
 /// </summary>
 public record ChatDto(Guid Id, ChatKind Kind, string Title, IReadOnlyList<UserDto> Members, MessageDto? LastMessage,
-    int UnreadCount = 0, long ReadUpTo = 0, Guid? OwnerId = null);
+    int UnreadCount = 0, long ReadUpTo = 0, Guid? OwnerId = null, Guid? AvatarId = null);
 
 /// <summary>
 /// Whether someone is in the app right now. <see cref="LastSeenAt"/> is when they last left it, null if unknown.

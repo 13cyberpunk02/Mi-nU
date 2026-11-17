@@ -26,6 +26,8 @@ public class Chat
     public string? DirectKey { get; set; }
     /// <summary>A group's owner: whoever created it, or the member it passed to when they left.</summary>
     public Guid? OwnerId { get; set; }
+    /// <summary>A group's picture: a file of the group itself, so only its members can fetch it, and it goes with the group.</summary>
+    public Guid? AvatarFileId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public List<ChatMember> Members { get; set; } = [];
 }

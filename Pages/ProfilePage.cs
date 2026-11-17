@@ -113,46 +113,16 @@ namespace Mi_nU.Pages
             Show();
         }
 
-        /// <summary>A small, upright picture without its metadata: it is shown to everyone the user meets.</summary>
+        /// <summary>It is shown to everyone the user meets, so it goes small and without its metadata.</summary>
         async Task PickPhotoAsync()
         {
-            FileResult? picked;
-            try
-            {
-                picked = (await MediaPicker.Default.PickPhotosAsync(new MediaPickerOptions
-                {
-                    Title = "Фото профиля",
-                    SelectionLimit = 1,
-                    MaximumWidth = 512,
-                    MaximumHeight = 512,
-                    CompressionQuality = 85,
-                    RotateImage = true,
-                    PreserveMetaData = false,
-                }) ?? []).FirstOrDefault(result => result is not null);
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                ShowError(e is PermissionException ? "Нет доступа к фото. Разрешите его в настройках." : "Не удалось открыть фото.");
+            var (picture, error) = await PicturePicker.PickAsync("Фото профиля");
+            if (error is not null)
+                ShowError(error);
+            if (picture is null)
                 return;
-            }
-            if (picked is null)
-                return;
-
-            byte[] bytes;
-            await using (var stream = await picked.OpenReadAsync())
-            using (var memory = new MemoryStream())
-            {
-                await stream.CopyToAsync(memory);
-                bytes = memory.ToArray();
-            }
-            if (bytes.Length > Limits.AvatarMax)
-            {
-                ShowError($"Фото больше {Limits.AvatarMax / 1024 / 1024} МБ.");
-                return;
-            }
-            var contentType = picked.ContentType is "image/png" ? "image/png" : "image/jpeg";
-            var size = ImageSize.Of(bytes);
-            await RunAsync(async () => await _auth.UpdateProfileAsync(await _api.SetAvatarAsync(bytes, contentType, size?.Width, size?.Height)));
+            await RunAsync(async () => await _auth.UpdateProfileAsync(
+                await _api.SetAvatarAsync(picture.Bytes, picture.ContentType, picture.Width, picture.Height)));
         }
 
         async Task RemovePhotoAsync()

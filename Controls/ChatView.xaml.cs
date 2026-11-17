@@ -157,7 +157,7 @@ namespace Mi_nU.Controls
             if (_chat?.Id != chat.Id)
                 return;
 
-            _chat = _chat with { Title = chat.Title, Members = chat.Members, OwnerId = chat.OwnerId };
+            _chat = _chat with { Title = chat.Title, Members = chat.Members, OwnerId = chat.OwnerId, AvatarId = chat.AvatarId };
             ShowHeader();
         }
 

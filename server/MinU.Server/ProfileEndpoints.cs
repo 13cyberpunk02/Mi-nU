@@ -29,36 +29,10 @@ public static partial class Endpoints
             ChatService chats, IFileStorage storage, ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub,
             ILogger<StoredFile> logger, CancellationToken cancel) =>
         {
-            if (!storage.IsEnabled)
-                return Results.Json(new { error = "Files are not set up on this server." }, statusCode: StatusCodes.Status503ServiceUnavailable);
-            if (file is null || file.Length == 0)
-                return Problem("Attach a picture.");
-            if (file.Length > Limits.AvatarMax)
-                return Problem($"A picture can be at most {Limits.AvatarMax / 1024 / 1024} MB.");
-            await using var content = file.OpenReadStream();
-            if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || !InlineTypes.Contains(file.ContentType)
-                || !await LooksLikeImageAsync(content, cancel))
-                return Problem("A profile picture must be a JPEG, PNG, GIF, WebP or HEIC image.");
-
             var user = await db.Users.FirstAsync(x => x.Id == UserId(principal), cancel);
-            var picture = new StoredFile
-            {
-                OwnerId = user.Id,
-                Name = "avatar" + Path.GetExtension(CleanName(file.FileName)).ToLowerInvariant(),
-                ContentType = file.ContentType.ToLowerInvariant(),
-                Size = file.Length,
-                Width = width is > 0 and <= 20_000 ? width : null,
-                Height = height is > 0 and <= 20_000 ? height : null,
-            };
-            try
-            {
-                await storage.PutAsync(picture.Key, content, picture.ContentType, cancel);
-            }
-            catch (Exception e) when (e is Amazon.Runtime.AmazonServiceException or HttpRequestException)
-            {
-                logger.LogError(e, "Storage refused the profile picture of {UserId}", user.Id);
-                return Results.Json(new { error = "File storage is unavailable." }, statusCode: StatusCodes.Status503ServiceUnavailable);
-            }
+            var (picture, refused) = await StorePictureAsync(file, width, height, user.Id, null, storage, logger, cancel);
+            if (picture is null)
+                return refused!;
 
             var previous = user.AvatarFileId;
             db.Files.Add(picture);
@@ -84,6 +58,46 @@ public static partial class Endpoints
         });
     }
 
+    /// <summary>
+    /// Checks and stores a picture for a profile or, with <paramref name="chatId"/>, a group: a real image of a shown type
+    /// and size, or the answer to give instead.
+    /// </summary>
+    static async Task<(StoredFile? Picture, IResult? Refused)> StorePictureAsync(IFormFile? file, int? width, int? height,
+        Guid ownerId, Guid? chatId, IFileStorage storage, ILogger logger, CancellationToken cancel)
+    {
+        if (!storage.IsEnabled)
+            return (null, Results.Json(new { error = "Files are not set up on this server." }, statusCode: StatusCodes.Status503ServiceUnavailable));
+        if (file is null || file.Length == 0)
+            return (null, Problem("Attach a picture."));
+        if (file.Length > Limits.AvatarMax)
+            return (null, Problem($"A picture can be at most {Limits.AvatarMax / 1024 / 1024} MB."));
+        await using var content = file.OpenReadStream();
+        if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || !InlineTypes.Contains(file.ContentType)
+            || !await LooksLikeImageAsync(content, cancel))
+            return (null, Problem("A picture must be a JPEG, PNG, GIF, WebP or HEIC image."));
+
+        var picture = new StoredFile
+        {
+            OwnerId = ownerId,
+            ChatId = chatId,
+            Name = "avatar" + Path.GetExtension(CleanName(file.FileName)).ToLowerInvariant(),
+            ContentType = file.ContentType.ToLowerInvariant(),
+            Size = file.Length,
+            Width = width is > 0 and <= 20_000 ? width : null,
+            Height = height is > 0 and <= 20_000 ? height : null,
+        };
+        try
+        {
+            await storage.PutAsync(picture.Key, content, picture.ContentType, cancel);
+        }
+        catch (Exception e) when (e is Amazon.Runtime.AmazonServiceException or HttpRequestException)
+        {
+            logger.LogError(e, "Storage refused the picture {Key} of {OwnerId}", picture.Key, ownerId);
+            return (null, Results.Json(new { error = "File storage is unavailable." }, statusCode: StatusCodes.Status503ServiceUnavailable));
+        }
+        return (picture, null);
+    }
+
     /// <summary>The new profile to everyone who shares a chat with the user, and to the user's other devices.</summary>
     static async Task<UserDto> ProfileChangedAsync(User user, ChatService chats, IHubContext<ChatHub, IChatClient> hub)
     {
@@ -105,7 +119,7 @@ public static partial class Endpoints
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            logger.LogWarning(e, "Could not delete the old profile picture {Key}", id.ToString("N"));
+            logger.LogWarning(e, "Could not delete the old picture {Key}", id.ToString("N"));
         }
     }
 }

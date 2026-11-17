@@ -75,7 +75,7 @@ namespace Mi_nU.Pages
                 return;
 
             var renamedElsewhere = TitleEntry.Text?.Trim() == _chat.Title;
-            _chat = _chat with { Title = chat.Title, Members = chat.Members, OwnerId = chat.OwnerId };
+            _chat = _chat with { Title = chat.Title, Members = chat.Members, OwnerId = chat.OwnerId, AvatarId = chat.AvatarId };
             // A name being typed stays; an untouched field follows the new name.
             if (renamedElsewhere)
                 TitleEntry.Text = chat.Title;
@@ -91,6 +91,8 @@ namespace Mi_nU.Pages
             var iOwn = chat.OwnerId == me;
             GroupAvatar.Name = chat.Title;
             GroupAvatar.Seed = chat.Id.ToString();
+            GroupAvatar.PictureId = chat.AvatarId;
+            RemovePhotoButton.IsVisible = chat.AvatarId is not null;
             GroupName.Text = chat.Title;
             GroupSize.Text = $"Участников: {chat.Members.Count}";
             RenameButton.IsEnabled = CanRename();
@@ -140,6 +142,44 @@ namespace Mi_nU.Pages
             {
                 ShowError(error.Message);
                 RenameButton.IsEnabled = CanRename();
+            }
+        }
+
+        async void OnPickPhotoClicked(object? sender, EventArgs e)
+        {
+            if (_chat is not { } chat)
+                return;
+            var (picture, error) = await PicturePicker.PickAsync("Фото группы");
+            if (error is not null)
+                ShowError(error);
+            if (picture is null)
+                return;
+            await ChangePhotoAsync(() => _api.SetGroupAvatarAsync(chat.Id, picture.Bytes, picture.ContentType, picture.Width, picture.Height));
+        }
+
+        async void OnRemovePhotoClicked(object? sender, EventArgs e)
+        {
+            if (_chat is not { } chat
+                || !await DisplayAlertAsync("Удалить фото группы?", "Вместо него снова будут инициалы.", "Удалить", "Отмена"))
+                return;
+            await ChangePhotoAsync(() => _api.RemoveGroupAvatarAsync(chat.Id));
+        }
+
+        async Task ChangePhotoAsync(Func<Task<ChatDto>> change)
+        {
+            PickPhotoButton.IsEnabled = RemovePhotoButton.IsEnabled = false;
+            try
+            {
+                Apply(await change());
+                ErrorLabel.IsVisible = false;
+            }
+            catch (ApiException error)
+            {
+                ShowError(error.Message);
+            }
+            finally
+            {
+                PickPhotoButton.IsEnabled = RemovePhotoButton.IsEnabled = true;
             }
         }
 

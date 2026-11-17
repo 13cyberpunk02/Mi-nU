@@ -372,7 +372,7 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
             : chat.Title ?? "";
         var readUpTo = chat.Members.Where(member => member.UserId != viewerId).Select(member => member.LastReadMessageId).DefaultIfEmpty().Max();
         var lastDto = last is null ? null : ToDto(last, attachments?.GetValueOrDefault(last.Id));
-        return new ChatDto(chat.Id, chat.Kind, title, members, lastDto, unread, readUpTo, chat.OwnerId);
+        return new ChatDto(chat.Id, chat.Kind, title, members, lastDto, unread, readUpTo, chat.OwnerId, chat.AvatarFileId);
     }
 
     public static UserDto ToDto(User user) => new(user.Id, user.UserName, user.DisplayName, user.AvatarFileId);

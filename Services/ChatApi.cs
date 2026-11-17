@@ -66,7 +66,11 @@ namespace Mi_nU.Services
                 ChatJsonContext.Default.UserDto);
 
         /// <summary>A new profile picture; the old one is removed from storage.</summary>
-        public Task<UserDto> SetAvatarAsync(byte[] bytes, string contentType, int? width, int? height)
+        public Task<UserDto> SetAvatarAsync(byte[] bytes, string contentType, int? width, int? height) =>
+            SendAsync(HttpMethod.Put, "/api/me/avatar", PictureForm(bytes, contentType, width, height),
+                ChatJsonContext.Default.UserDto, default, _uploads);
+
+        static MultipartFormDataContent PictureForm(byte[] bytes, string contentType, int? width, int? height)
         {
             var form = new MultipartFormDataContent();
             var file = new ByteArrayContent(bytes);
@@ -76,7 +80,7 @@ namespace Mi_nU.Services
                 form.Add(new StringContent(w.ToString(System.Globalization.CultureInfo.InvariantCulture)), "width");
             if (height is { } h)
                 form.Add(new StringContent(h.ToString(System.Globalization.CultureInfo.InvariantCulture)), "height");
-            return SendAsync(HttpMethod.Put, "/api/me/avatar", form, ChatJsonContext.Default.UserDto, default, _uploads);
+            return form;
         }
 
         public Task<UserDto> RemoveAvatarAsync() =>
@@ -105,6 +109,14 @@ namespace Mi_nU.Services
             SendAsync(HttpMethod.Post, "/api/chats/group",
                 JsonContent.Create(new CreateGroupChatRequest(title, memberIds), ChatJsonContext.Default.CreateGroupChatRequest),
                 ChatJsonContext.Default.ChatDto);
+
+        /// <summary>A new picture for the group; the old one is removed from storage.</summary>
+        public Task<ChatDto> SetGroupAvatarAsync(Guid chatId, byte[] bytes, string contentType, int? width, int? height) =>
+            SendAsync(HttpMethod.Put, $"/api/chats/{chatId}/avatar", PictureForm(bytes, contentType, width, height),
+                ChatJsonContext.Default.ChatDto, default, _uploads);
+
+        public Task<ChatDto> RemoveGroupAvatarAsync(Guid chatId) =>
+            SendAsync(HttpMethod.Delete, $"/api/chats/{chatId}/avatar", null, ChatJsonContext.Default.ChatDto);
 
         public Task<ChatDto> RenameGroupAsync(Guid chatId, string title) =>
             SendAsync(HttpMethod.Put, $"/api/chats/{chatId}/title",

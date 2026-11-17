@@ -212,6 +212,44 @@ public static partial class Endpoints
             return Results.Ok(await GroupChangedAsync(chatId, me, $"{NameIn(chat, me)} переименовал(а) группу в «{title}»", chats, hub));
         });
 
+        // A group's picture, changed like its title by any member. It is a file of the group: only members fetch it.
+        api.MapPut("/chats/{chatId:guid}/avatar", async (Guid chatId, IFormFile? file, [Microsoft.AspNetCore.Mvc.FromForm] int? width,
+            [Microsoft.AspNetCore.Mvc.FromForm] int? height, ChatService chats, AppDbContext db, IFileStorage storage,
+            ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub, ILogger<StoredFile> logger, CancellationToken cancel) =>
+        {
+            var me = UserId(principal);
+            if (await chats.FindGroupAsync(chatId, me) is not { } chat)
+                return Results.NotFound();
+            var (picture, refused) = await StorePictureAsync(file, width, height, me, chatId, storage, logger, cancel);
+            if (picture is null)
+                return refused!;
+
+            var group = await db.Chats.FirstAsync(x => x.Id == chatId, cancel);
+            var previous = group.AvatarFileId;
+            db.Files.Add(picture);
+            group.AvatarFileId = picture.Id;
+            await db.SaveChangesAsync(cancel);
+            await RemovePictureAsync(previous, db, storage, logger);
+            return Results.Ok(await GroupChangedAsync(chatId, me, $"{NameIn(chat, me)} изменил(а) фото группы", chats, hub));
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(Limits.AvatarMax + 1024 * 1024))
+        .DisableAntiforgery();
+
+        api.MapDelete("/chats/{chatId:guid}/avatar", async (Guid chatId, ChatService chats, AppDbContext db, IFileStorage storage,
+            ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub, ILogger<StoredFile> logger) =>
+        {
+            var me = UserId(principal);
+            if (await chats.FindGroupAsync(chatId, me) is not { } chat)
+                return Results.NotFound();
+            var group = await db.Chats.FirstAsync(x => x.Id == chatId);
+            if (group.AvatarFileId is not { } previous)
+                return Results.Ok(ChatService.ToDto(chat, me, null));
+            group.AvatarFileId = null;
+            await db.SaveChangesAsync();
+            await RemovePictureAsync(previous, db, storage, logger);
+            return Results.Ok(await GroupChangedAsync(chatId, me, $"{NameIn(chat, me)} удалил(а) фото группы", chats, hub));
+        });
+
         api.MapPost("/chats/{chatId:guid}/members", async (Guid chatId, AddMembersRequest request, ChatService chats,
             ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub) =>
         {

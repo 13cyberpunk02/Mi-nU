@@ -13,6 +13,13 @@
             <controls:Avatar x:Name="GroupAvatar" Size="72" HorizontalOptions="Center" />
             <Label x:Name="GroupName" AutomationId="GroupName" Style="{StaticResource Heading}" HorizontalTextAlignment="Center" />
             <Label x:Name="GroupSize" Style="{StaticResource Caption}" HorizontalTextAlignment="Center" />
+            <!-- Any member may change the picture, as with the name. -->
+            <HorizontalStackLayout Spacing="12" HorizontalOptions="Center">
+                <Button x:Name="PickPhotoButton" AutomationId="GroupPickPhoto" Text="Выбрать фото" Style="{StaticResource SecondaryButton}"
+                        Clicked="OnPickPhotoClicked" />
+                <Button x:Name="RemovePhotoButton" AutomationId="GroupRemovePhoto" Text="Удалить фото" Style="{StaticResource SecondaryButton}"
+                        TextColor="{DynamicResource DangerText}" IsVisible="False" Clicked="OnRemovePhotoClicked" />
+            </HorizontalStackLayout>
         </VerticalStackLayout>
 
         <VerticalStackLayout Grid.Row="1" Spacing="6">

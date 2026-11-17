@@ -12,8 +12,8 @@ namespace Mi_nU
     {
         public string Title => Chat.Title;
         public string Seed => Chat.Kind == ChatKind.Direct ? Chat.Title : Chat.Id.ToString();
-        /// <summary>A direct chat shows the other person's picture; a group has none yet.</summary>
-        public Guid? PictureId => Chat.Kind == ChatKind.Direct ? Chat.Members.FirstOrDefault(member => member.Id != Viewer)?.AvatarId : null;
+        /// <summary>A direct chat shows the other person's picture, a group its own.</summary>
+        public Guid? PictureId => Chat.Kind == ChatKind.Direct ? Chat.Members.FirstOrDefault(member => member.Id != Viewer)?.AvatarId : Chat.AvatarId;
         public string Preview => Chat.LastMessage switch
         {
             null => Chat.Kind == ChatKind.Group ? $"Участников: {Chat.Members.Count}" : "Сообщений пока нет",

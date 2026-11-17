@@ -870,6 +870,62 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         Assert.Equal(7, Assert.Single(received.Attachments!).DurationSeconds);
     }
 
+    static async Task<HttpResponseMessage> PutGroupAvatarAsync(Client client, Guid chatId, byte[] bytes, string contentType)
+    {
+        using var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        form.Add(file, "file", "group.png");
+        return await client.Http.PutAsync($"/api/chats/{chatId}/avatar", form);
+    }
+
+    [Fact]
+    public async Task A_group_picture_reaches_members_only_and_goes_with_the_group()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var stranger = await server.RegisterAsync("stranger");
+        var group = await alice.GroupWithAsync("team", bob);
+        Assert.Equal(HttpStatusCode.NotFound, (await PutGroupAvatarAsync(stranger, group.Id, Png, "image/png")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PutGroupAvatarAsync(bob, group.Id, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "image/png")).StatusCode);
+
+        // Any member may change it, as with the title; everyone hears of it.
+        var aliceSaw = alice.Next<ChatDto>("ChatUpdated");
+        var line = alice.Next<MessageDto>("MessageReceived");
+        var response = await PutGroupAvatarAsync(bob, group.Id, Png, "image/png");
+        response.EnsureSuccessStatusCode();
+        var first = (await response.Content.ReadFromJsonAsync<ChatDto>())!.AvatarId;
+        Assert.NotNull(first);
+        Assert.Equal(first, (await aliceSaw).AvatarId);
+        Assert.Contains("изменил(а) фото группы", (await line).Text);
+
+        Assert.Equal(HttpStatusCode.OK, (await alice.Http.GetAsync($"/api/files/{first}/link")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await stranger.Http.GetAsync($"/api/files/{first}/link")).StatusCode);
+
+        // A new one replaces the old one, bytes and all; the daily cleanup leaves the current one alone.
+        var second = (await (await PutGroupAvatarAsync(alice, group.Id, Png, "image/png")).Content.ReadFromJsonAsync<ChatDto>())!.AvatarId;
+        Assert.Equal(HttpStatusCode.NotFound, (await alice.Http.GetAsync($"/api/files/{first}/link")).StatusCode);
+        using (var scope = server.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<AppDbContext>().Files.Where(x => x.Id == second)
+                .ExecuteUpdateAsync(set => set.SetProperty(x => x.CreatedAt, DateTimeOffset.UtcNow.AddDays(-5)));
+        await server.Services.GetRequiredService<FileCleanup>().RemoveUnsentAsync(DateTimeOffset.UtcNow.AddDays(-1), CancellationToken.None);
+        Assert.Equal(HttpStatusCode.OK, (await bob.Http.GetAsync($"/api/files/{second}/link")).StatusCode);
+        var chats = (await bob.Http.GetFromJsonAsync<List<ChatDto>>("/api/chats"))!;
+        Assert.Equal(second, chats.Single().AvatarId);
+
+        var removed = bob.Next<ChatDto>("ChatUpdated");
+        (await alice.Http.DeleteAsync($"/api/chats/{group.Id}/avatar")).EnsureSuccessStatusCode();
+        Assert.Null((await removed).AvatarId);
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.Http.GetAsync($"/api/files/{second}/link")).StatusCode);
+
+        // The group's last picture goes when the group does.
+        var third = (await (await PutGroupAvatarAsync(alice, group.Id, Png, "image/png")).Content.ReadFromJsonAsync<ChatDto>())!.AvatarId;
+        await bob.Http.DeleteAsync($"/api/chats/{group.Id}/members/{bob.User.Id}");
+        await alice.Http.DeleteAsync($"/api/chats/{group.Id}/members/{alice.User.Id}");
+        using (var scope = server.Services.CreateScope())
+            Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().Files.AnyAsync(x => x.Id == third));
+    }
+
     [Fact]
     public async Task A_deleted_group_takes_its_files_along()
     {
