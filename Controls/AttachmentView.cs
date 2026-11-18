@@ -382,6 +382,7 @@ namespace Mi_nU.Controls
 
         async Task OpenAsync()
         {
+            TapGuard.Mark();
             if (Item is { File.IsVoice: true } voice)
             {
                 await PlayAsync(voice);

@@ -22,6 +22,9 @@ public interface IFileStorage
     Uri LinkFor(string key, TimeSpan lifetime, string? downloadName);
 
     Task DeleteAsync(string key, CancellationToken cancel);
+
+    /// <summary>A second copy of a file under another key, made by storage itself, without the bytes passing through.</summary>
+    Task CopyAsync(string fromKey, string toKey, CancellationToken cancel);
 }
 
 /// <summary>Storage:* settings; without ServiceUrl the server runs with files off.</summary>
@@ -99,6 +102,9 @@ public sealed class S3FileStorage : IFileStorage, IDisposable
         return new Uri(_signer.GetPreSignedURL(request));
     }
 
+    public async Task CopyAsync(string fromKey, string toKey, CancellationToken cancel) =>
+        await _client.CopyObjectAsync(_bucket, fromKey, _bucket, toKey, cancel);
+
     public async Task DeleteAsync(string key, CancellationToken cancel) =>
         await _client.DeleteObjectAsync(_bucket, key, cancel);
 
@@ -148,4 +154,5 @@ public sealed class NoFileStorage : IFileStorage
     public Task PutAsync(string key, Stream content, string contentType, CancellationToken cancel) => throw new InvalidOperationException("Storage is not set up.");
     public Uri LinkFor(string key, TimeSpan lifetime, string? downloadName) => throw new InvalidOperationException("Storage is not set up.");
     public Task DeleteAsync(string key, CancellationToken cancel) => Task.CompletedTask;
+    public Task CopyAsync(string fromKey, string toKey, CancellationToken cancel) => throw new InvalidOperationException("Storage is not set up.");
 }

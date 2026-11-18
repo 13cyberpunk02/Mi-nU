@@ -14,7 +14,10 @@ namespace Mi_nU
         public string Seed => Chat.Kind == ChatKind.Direct ? Chat.Title : Chat.Id.ToString();
         /// <summary>A direct chat shows the other person's picture, a group its own.</summary>
         public Guid? PictureId => Chat.Kind == ChatKind.Direct ? Chat.Members.FirstOrDefault(member => member.Id != Viewer)?.AvatarId : Chat.AvatarId;
-        public string Preview => Chat.LastMessage switch
+        /// <summary>"печатает…" while someone in the chat types, in place of the last message.</summary>
+        public string? Typing { get; init; }
+        public bool IsTyping => Typing is not null;
+        public string Preview => Typing ?? Chat.LastMessage switch
         {
             null => Chat.Kind == ChatKind.Group ? $"Участников: {Chat.Members.Count}" : "Сообщений пока нет",
             { Call: { } call } => Formatting.CallLine(call, LastIsMine),
@@ -119,6 +122,9 @@ namespace Mi_nU
         /// <summary>The list's copy of the chat, kept current while other pages cover it.</summary>
         public ChatDto? Latest(Guid chatId) => _chats.FirstOrDefault(row => row.Chat.Id == chatId)?.Chat;
 
+        /// <summary>The user's chats, newest first, as the list shows them: where a message can be forwarded.</summary>
+        public IReadOnlyList<ChatDto> Chats => _chats.Select(row => row.Chat).ToList();
+
         /// <summary>Takes a group's new title, members and owner, from the server's event or a request's answer.</summary>
         public void ApplyUpdate(ChatDto update) => OnChatUpdated(update);
 
@@ -163,6 +169,9 @@ namespace Mi_nU
             _visible = true;
             ShowOwnAvatar();
             _hub.MessageReceived += OnMessageReceived;
+            _hub.MessageUpdated += OnMessageUpdated;
+            _hub.MessageDeleted += OnMessageDeleted;
+            _hub.UserTyping += OnUserTyping;
             _hub.ChatCreated += OnChatCreated;
             _hub.ChatRead += OnChatRead;
             _hub.Connected += OnConnected;
@@ -185,6 +194,9 @@ namespace Mi_nU
             base.OnDisappearing();
             _visible = false;
             _hub.MessageReceived -= OnMessageReceived;
+            _hub.MessageUpdated -= OnMessageUpdated;
+            _hub.MessageDeleted -= OnMessageDeleted;
+            _hub.UserTyping -= OnUserTyping;
             _hub.ChatCreated -= OnChatCreated;
             _hub.ChatRead -= OnChatRead;
             _hub.Connected -= OnConnected;
@@ -275,8 +287,76 @@ namespace Mi_nU
         {
             var me = _auth.Session?.User.Id ?? default;
             var online = chat.Kind == ChatKind.Direct && chat.Members.Any(member => member.Id != me && _presence.IsOnline(member.Id));
-            return new(chat, me, online);
+            return new(chat, me, online) { Typing = TypingIn(chat) };
         }
+
+        /// <summary>Who types in which chat, until when: each "typing" from the server holds for a few seconds.</summary>
+        readonly Dictionary<Guid, (Guid UserId, DateTime Until)> _typing = [];
+        IDispatcherTimer? _typingClock;
+
+        string? TypingIn(ChatDto chat)
+        {
+            if (!_typing.TryGetValue(chat.Id, out var typing) || typing.Until < DateTime.UtcNow)
+                return null;
+            if (chat.Kind == ChatKind.Direct)
+                return "печатает…";
+            var name = chat.Members.FirstOrDefault(member => member.Id == typing.UserId)?.DisplayName ?? "Кто-то";
+            return $"{name} печатает…";
+        }
+
+        void OnUserTyping(Guid chatId, Guid userId) => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (userId == _auth.Session?.User.Id)
+                return;
+            _typing[chatId] = (userId, DateTime.UtcNow.AddSeconds(5));
+            RefreshRow(chatId);
+            if (_typingClock is null)
+            {
+                _typingClock = Dispatcher.CreateTimer();
+                _typingClock.Interval = TimeSpan.FromSeconds(1);
+                _typingClock.Tick += (_, _) =>
+                {
+                    foreach (var done in _typing.Where(pair => pair.Value.Until < DateTime.UtcNow).Select(pair => pair.Key).ToList())
+                    {
+                        _typing.Remove(done);
+                        RefreshRow(done);
+                    }
+                    if (_typing.Count == 0)
+                        _typingClock?.Stop();
+                };
+            }
+            _typingClock.Start();
+        });
+
+        void RefreshRow(Guid chatId)
+        {
+            var index = _chats.ToList().FindIndex(row => row.Chat.Id == chatId);
+            if (index < 0)
+                return;
+            var row = Row(_chats[index].Chat);
+            if (row != _chats[index])
+            {
+                _chats[index] = row;
+                ApplySearch();
+            }
+        }
+
+        /// <summary>An edit or a new reaction: if it is the chat's last message, its line in the list changes.</summary>
+        void OnMessageUpdated(MessageDto message) => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var index = _chats.ToList().FindIndex(row => row.Chat.Id == message.ChatId && row.Chat.LastMessage?.Id == message.Id);
+            if (index < 0)
+                return;
+            _chats[index] = Row(_chats[index].Chat with { LastMessage = message });
+            ApplySearch();
+        });
+
+        /// <summary>The chat's last message was deleted: the server knows which one is last now.</summary>
+        void OnMessageDeleted(Guid chatId, long messageId) => MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            if (_chats.Any(row => row.Chat.Id == chatId && row.Chat.LastMessage?.Id == messageId))
+                await ReloadAsync();
+        });
 
         void OnPresenceChanged(Guid userId)
         {
@@ -308,6 +388,9 @@ namespace Mi_nU
                 return;
             }
 
+            // Whoever sent it has stopped typing it.
+            if (_typing.TryGetValue(message.ChatId, out var typing) && typing.UserId == message.Sender.Id)
+                _typing.Remove(message.ChatId);
             var chat = row.Chat with { LastMessage = message };
             if (message.Sender.Id == _auth.Session?.User.Id)
                 // Writing in a chat, from here or another device, means having read it.

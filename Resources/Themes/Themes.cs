@@ -68,6 +68,9 @@ namespace Mi_nU.Themes
         public const string Play = "\uE140";
         public const string Pause = "\uE132";
         public const string Trash = "\uE18E";
+        public const string Reply = "\uE22A";
+        public const string Pencil = "\uE1F9";
+        public const string Forward = "\uE229";
         public const string Close = "";
         public const string LogOut = "";
     }

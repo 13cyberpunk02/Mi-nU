@@ -55,6 +55,24 @@ public class Message
     public bool CallVideo { get; set; }
     /// <summary>For a call record: how long it lasted from the answer; null when nobody answered.</summary>
     public int? CallSeconds { get; set; }
+    /// <summary>
+    /// The message this one answers. No foreign key: the answered message may be deleted later, and the reply then says so
+    /// rather than losing what it was a reply to.
+    /// </summary>
+    public long? ReplyToId { get; set; }
+    /// <summary>When the sender last changed the text; null if never.</summary>
+    public DateTimeOffset? EditedAt { get; set; }
+    /// <summary>For a forwarded message: the name of whoever first wrote it, as it was then.</summary>
+    public string? ForwardedFrom { get; set; }
+}
+
+/// <summary>Someone's reaction to a message: one per person per message, removed with the message.</summary>
+public class Reaction
+{
+    public long MessageId { get; set; }
+    public Guid UserId { get; set; }
+    public required string Emoji { get; set; }
+    public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
 }
 
 /// <summary>Where to send a user's push notifications: one row per installed app.</summary>
@@ -117,6 +135,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Chat> Chats => Set<Chat>();
     public DbSet<ChatMember> ChatMembers => Set<ChatMember>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<Reaction> Reactions => Set<Reaction>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
 
     protected override void OnModelCreating(ModelBuilder model)
@@ -147,6 +166,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             message.HasIndex(x => new { x.ChatId, x.Id });
             // A client resends with the same id after a lost connection; the index keeps that from duplicating.
             message.HasIndex(x => new { x.SenderId, x.ClientMessageId }).IsUnique();
+            message.Property(x => x.ForwardedFrom).HasMaxLength(Limits.DisplayNameMax);
+        });
+
+        model.Entity<Reaction>(reaction =>
+        {
+            reaction.HasKey(x => new { x.MessageId, x.UserId });
+            reaction.Property(x => x.Emoji).HasMaxLength(16);
+            // A deleted message takes its reactions with it.
+            reaction.HasOne<Message>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<RefreshToken>(token =>

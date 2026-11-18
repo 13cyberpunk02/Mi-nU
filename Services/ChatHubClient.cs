@@ -62,6 +62,9 @@ namespace Mi_nU.Services
             hub.On<Guid, UserDto>(nameof(IChatClient.CallDeclined), (callId, user) => CallDeclined?.Invoke(callId, user));
             hub.On<Guid>(nameof(IChatClient.CallEnded), callId => CallEnded?.Invoke(callId));
             hub.On<CallSignal>(nameof(IChatClient.CallSignalReceived), signal => CallSignalReceived?.Invoke(signal));
+            hub.On<MessageDto>(nameof(IChatClient.MessageUpdated), message => MessageUpdated?.Invoke(message));
+            hub.On<Guid, long>(nameof(IChatClient.MessageDeleted), (chatId, messageId) => MessageDeleted?.Invoke(chatId, messageId));
+            hub.On<Guid, Guid>(nameof(IChatClient.UserTyping), (chatId, userId) => UserTyping?.Invoke(chatId, userId));
             hub.Reconnected += _ =>
             {
                 Connected?.Invoke();
@@ -73,19 +76,38 @@ namespace Mi_nU.Services
             _ = ConnectAsync(hub, _stop.Token);
         }
 
-        public async Task<MessageDto> SendMessageAsync(Guid chatId, string text, Guid clientMessageId)
+        /// <summary>A message's text was edited or its reactions changed.</summary>
+        public event Action<MessageDto>? MessageUpdated;
+        /// <summary>Its sender deleted a message, in the chat with the first id, for everyone.</summary>
+        public event Action<Guid, long>? MessageDeleted;
+        /// <summary>The user with the second id is typing in the chat with the first.</summary>
+        public event Action<Guid, Guid>? UserTyping;
+
+        /// <summary>Text, or files uploaded beforehand with an optional caption, optionally as a reply to <paramref name="replyToId"/>.</summary>
+        public async Task<MessageDto> SendAsync(Guid chatId, string text, Guid clientMessageId, IReadOnlyList<Guid>? fileIds = null, long? replyToId = null)
         {
             // Right after signing in the connection is still being set up; a message typed that fast shouldn't fail.
             await WaitConnectedAsync(TimeSpan.FromSeconds(10));
-            return await Connection().InvokeAsync<MessageDto>("SendMessage", chatId, text, clientMessageId);
+            return await Connection().InvokeAsync<MessageDto>("Send", new SendMessageRequest(chatId, text, clientMessageId, fileIds, replyToId));
         }
 
+        public Task<MessageDto> SendMessageAsync(Guid chatId, string text, Guid clientMessageId) => SendAsync(chatId, text, clientMessageId);
+
         /// <summary>Sends files uploaded into the chat beforehand, with an optional caption.</summary>
-        public async Task<MessageDto> SendAttachmentsAsync(Guid chatId, string text, Guid clientMessageId, IReadOnlyList<Guid> fileIds)
-        {
-            await WaitConnectedAsync(TimeSpan.FromSeconds(10));
-            return await Connection().InvokeAsync<MessageDto>("SendAttachments", chatId, text, clientMessageId, fileIds);
-        }
+        public Task<MessageDto> SendAttachmentsAsync(Guid chatId, string text, Guid clientMessageId, IReadOnlyList<Guid> fileIds) =>
+            SendAsync(chatId, text, clientMessageId, fileIds);
+
+        public Task<MessageDto> EditMessageAsync(long messageId, string text) => Connection().InvokeAsync<MessageDto>("EditMessage", messageId, text);
+
+        public Task DeleteMessageAsync(long messageId) => Connection().InvokeAsync("DeleteMessage", messageId);
+
+        /// <summary>The user's reaction; null takes it back.</summary>
+        public Task<MessageDto> ReactAsync(long messageId, string? emoji) => Connection().InvokeAsync<MessageDto>("React", messageId, emoji);
+
+        public Task<MessageDto> ForwardAsync(long messageId, Guid toChatId) => Connection().InvokeAsync<MessageDto>("Forward", messageId, toChatId);
+
+        /// <summary>Best effort: a missed "typing" only means the others don't see it for a moment.</summary>
+        public Task TypingAsync(Guid chatId) => TryInvokeAsync("Typing", chatId);
 
         /// <summary>Best effort, see <see cref="TryInvokeAsync"/>: the open chat reloads and marks itself again on <see cref="Connected"/>.</summary>
         public Task MarkReadAsync(Guid chatId, long messageId) => TryInvokeAsync("MarkRead", chatId, messageId);

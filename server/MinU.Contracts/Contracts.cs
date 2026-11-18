@@ -48,9 +48,13 @@ public record CallSummary(bool Video, int? DurationSeconds);
 /// <see cref="Id"/> grows within the server, so it orders messages and pages history.
 /// A <see cref="MessageKind.Call"/> record comes from the server when a call ends; its <see cref="Sender"/> is the caller,
 /// and <see cref="Text"/> describes it for apps that don't know call records.
+/// <see cref="ReplyTo"/> quotes the message this one answers; <see cref="EditedAt"/> is set once its text was changed;
+/// <see cref="ForwardedFrom"/> names who first wrote a forwarded message; <see cref="Reactions"/> lists who reacted how.
 /// </summary>
 public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, DateTimeOffset SentAt, Guid ClientMessageId,
-    MessageKind Kind = MessageKind.Text, CallSummary? Call = null, IReadOnlyList<FileDto>? Attachments = null)
+    MessageKind Kind = MessageKind.Text, CallSummary? Call = null, IReadOnlyList<FileDto>? Attachments = null,
+    ReplyPreview? ReplyTo = null, DateTimeOffset? EditedAt = null, string? ForwardedFrom = null,
+    IReadOnlyList<ReactionDto>? Reactions = null)
 {
     [System.Text.Json.Serialization.JsonIgnore]
     public bool HasAttachments => Attachments is { Count: > 0 };
@@ -71,6 +75,27 @@ public record MessageDto(long Id, Guid ChatId, UserDto Sender, string Text, Date
             return Text.Length > 0 ? $"{what} · {Text}" : what;
         }
     }
+}
+
+/// <summary>
+/// The message a reply answers, as a line to quote: who wrote it and how it begins. <see cref="Deleted"/> when it is gone,
+/// and then the rest is empty.
+/// </summary>
+public record ReplyPreview(long Id, string SenderName, string Summary, bool Deleted = false);
+
+/// <summary>Everyone who reacted to a message with <see cref="Emoji"/>, in the order they did.</summary>
+public record ReactionDto(string Emoji, IReadOnlyList<Guid> UserIds);
+
+/// <summary>
+/// A message to send: text, files uploaded beforehand (POST /api/chats/{id}/files), or both, optionally as a reply.
+/// Sending again with the same <see cref="ClientMessageId"/> after a lost connection doesn't send twice.
+/// </summary>
+public record SendMessageRequest(Guid ChatId, string? Text, Guid ClientMessageId, IReadOnlyList<Guid>? FileIds = null, long? ReplyToId = null);
+
+public static class Reactions
+{
+    /// <summary>The reactions there are; anything else is refused. One per person per message.</summary>
+    public static readonly IReadOnlyList<string> Allowed = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 }
 
 public static class AttachmentLimits
@@ -188,4 +213,10 @@ public interface IChatClient
     Task CallDeclined(Guid callId, UserDto user);
     Task CallEnded(Guid callId);
     Task CallSignalReceived(CallSignal signal);
+    /// <summary>A message's text was edited or its reactions changed; it replaces the one with the same id.</summary>
+    Task MessageUpdated(MessageDto message);
+    /// <summary>The sender deleted a message for everyone.</summary>
+    Task MessageDeleted(Guid chatId, long messageId);
+    /// <summary>Someone is typing in the chat; it holds for a few seconds unless repeated.</summary>
+    Task UserTyping(Guid chatId, Guid userId);
 }

@@ -6,6 +6,13 @@ namespace Mi_nU.Controls
 {
     public enum MessageState { Sent, Sending, Failed }
 
+    /// <summary>One emoji under a message: how many reacted with it, and whether the user is one of them.</summary>
+    public sealed record ReactionChip(long MessageId, string Emoji, int Count, bool Mine)
+    {
+        public string Text => $"{Emoji} {Count}";
+        public string Description => Mine ? $"{Emoji}: {Count}, в том числе вы. Нажмите, чтобы убрать" : $"{Emoji}: {Count}. Нажмите, чтобы поставить";
+    }
+
     /// <summary><see cref="Id"/> is null until the server has accepted the message.</summary>
     public record MessageRow(long? Id, Guid ClientMessageId, string Text, string Sender, bool ShowSender, bool IsMine, DateTimeOffset SentAt, MessageState State)
     {
@@ -67,8 +74,37 @@ namespace Mi_nU.Controls
         {
             MessageState.Sending => "Отправляется…",
             MessageState.Failed => "Не отправлено · нажмите, чтобы повторить",
+            _ when Edited => $"изменено {Formatting.Time(SentAt)}",
             _ => Formatting.Time(SentAt),
         };
+
+        /// <summary>The message this one answers, quoted above it.</summary>
+        public ReplyPreview? ReplyTo { get; init; }
+        public bool HasReply => ReplyTo is not null;
+        public string ReplyName => ReplyTo is { Deleted: false } reply ? reply.SenderName : "";
+        public string ReplyText => ReplyTo switch
+        {
+            null => "",
+            { Deleted: true } => "Сообщение удалено",
+            { Summary.Length: 0 } => "Сообщение",
+            var reply => reply.Summary,
+        };
+        public string ReplyDescription => ReplyTo is { Deleted: false } reply ? $"Ответ на сообщение {reply.SenderName}: {reply.Summary}" : "Ответ на удалённое сообщение";
+
+        public bool Edited { get; init; }
+        /// <summary>For a forwarded message, who first wrote it.</summary>
+        public string? ForwardedFrom { get; init; }
+        public bool IsForwarded => ForwardedFrom is not null;
+        public string ForwardLine => ForwardedFrom is { } author ? $"Переслано от {author}" : "";
+        /// <summary>The reply, forward and name lines over photos need the inset the photos themselves don't have.</summary>
+        public bool HasHeader => HasReply || IsForwarded || ShowSenderName;
+
+        public IReadOnlyList<ReactionChip>? Reactions { get; init; }
+        public bool HasReactions => Reactions is { Count: > 0 };
+        /// <summary>The emoji this user reacted with, if any.</summary>
+        public string? MyReaction => Reactions?.FirstOrDefault(chip => chip.Mine)?.Emoji;
+        /// <summary>The menu acts on messages the server has, not on call records, group lines or unsent ones.</summary>
+        public bool CanAct => Id is not null && !IsSystem && Call is null;
     }
 
     public class MessageTemplateSelector : DataTemplateSelector
@@ -163,6 +199,9 @@ namespace Mi_nU.Controls
                 return;
 
             _ = StopVoiceAsync();
+            ClearContext();
+            CloseSearch();
+            _typing.Clear();
             _chat = chat;
             _readUpTo = chat.ReadUpTo;
             _markedUpTo = 0;
@@ -188,6 +227,9 @@ namespace Mi_nU.Controls
         public void Close()
         {
             _ = StopVoiceAsync();
+            ClearContext();
+            CloseSearch();
+            _typing.Clear();
             _chat = null;
             _rows.Clear();
             MessageEntry.Text = "";
@@ -236,6 +278,12 @@ namespace Mi_nU.Controls
                 online = presence?.Online == true;
             }
 
+            // Someone typing says more than whether they are online.
+            if (TypingLine() is { } typing)
+            {
+                text = typing;
+                online = true;
+            }
             HeaderSubtitle.Text = text;
             HeaderSubtitle.IsVisible = text.Length > 0;
             HeaderSubtitle.SetDynamicResource(Label.TextColorProperty, online ? "AccentText" : "TextMuted");
@@ -259,6 +307,11 @@ namespace Mi_nU.Controls
             _activity.Changed += MarkSeen;
             _presence.Changed += OnPresenceChanged;
             _hub.ChatUpdated += OnChatUpdated;
+            _hub.MessageUpdated += OnMessageUpdated;
+            _hub.MessageDeleted += OnMessageDeleted;
+            _hub.UserTyping += OnUserTyping;
+            MessageHeader.ReplyTapped += OnReplyTapped;
+            ReactionBar.ChipTapped += OnChipTapped;
             _clock.Start();
             // The group may have changed while another page covered this one.
             if (_chat is { } chat && MainPage.Current?.Latest(chat.Id) is { } latest)
@@ -281,6 +334,11 @@ namespace Mi_nU.Controls
             _activity.Changed -= MarkSeen;
             _presence.Changed -= OnPresenceChanged;
             _hub.ChatUpdated -= OnChatUpdated;
+            _hub.MessageUpdated -= OnMessageUpdated;
+            _hub.MessageDeleted -= OnMessageDeleted;
+            _hub.UserTyping -= OnUserTyping;
+            MessageHeader.ReplyTapped -= OnReplyTapped;
+            ReactionBar.ChipTapped -= OnChipTapped;
             _clock.Stop();
         }
 
@@ -401,6 +459,9 @@ namespace Mi_nU.Controls
             if (message.ChatId != _chat?.Id)
                 return;
 
+            // Whoever sent it has stopped typing it.
+            if (_typing.Remove(message.Sender.Id))
+                ShowPresence();
             Merge(message);
             ScrollToEnd();
             // Whoever replies has read everything before their reply.
@@ -412,11 +473,17 @@ namespace Mi_nU.Controls
         async void OnSendClicked(object? sender, EventArgs e)
         {
             var text = MessageEntry.Text?.Trim() ?? "";
+            if (_editing is not null)
+            {
+                await SaveEditAsync(text);
+                return;
+            }
             if (text.Length == 0 || _chat is null)
                 return;
 
             MessageEntry.Text = "";
             var row = new MessageRow(null, Guid.NewGuid(), text, _auth.Session?.User.DisplayName ?? "", false, true, DateTimeOffset.UtcNow, MessageState.Sending);
+            row = row with { ReplyTo = TakeReply() };
             _rows.Add(row);
             Relink(_rows.Count - 1);
             ScrollToEnd();
@@ -426,9 +493,12 @@ namespace Mi_nU.Controls
         void OnMessageTextChanged(object? sender, TextChangedEventArgs e)
         {
             var typed = !string.IsNullOrWhiteSpace(e.NewTextValue);
-            SendButton.IsVisible = typed;
-            RecordButton.IsVisible = !typed;
-            VideoNoteButton.IsVisible = !typed;
+            // Editing always ends with saving, even a caption cleared away.
+            SendButton.IsVisible = typed || _editing is not null;
+            RecordButton.IsVisible = !SendButton.IsVisible;
+            VideoNoteButton.IsVisible = !SendButton.IsVisible;
+            if (typed && _editing is null)
+                SayTyping();
         }
 
         readonly VoiceRecorder _recorder;
@@ -570,6 +640,7 @@ namespace Mi_nU.Controls
                 Attachments = [new AttachmentItem(new FileDto(Guid.Empty, name, type, bytes.Length, DurationSeconds: video.Seconds), video.Path)],
             };
             _outgoing[row.ClientMessageId] = [new OutgoingFile(bytes, name, type, null, video.Path, video.Seconds)];
+            row = row with { ReplyTo = TakeReply() };
             _rows.Add(row);
             Relink(_rows.Count - 1);
             ScrollToEnd();
@@ -611,6 +682,7 @@ namespace Mi_nU.Controls
                 Attachments = [new AttachmentItem(new FileDto(Guid.Empty, name, type, bytes.Length, DurationSeconds: voice.Seconds, Waveform: waveform), voice.Path)],
             };
             _outgoing[row.ClientMessageId] = [new OutgoingFile(bytes, name, type, null, voice.Path, voice.Seconds, waveform)];
+            row = row with { ReplyTo = TakeReply() };
             _rows.Add(row);
             Relink(_rows.Count - 1);
             ScrollToEnd();
@@ -627,6 +699,13 @@ namespace Mi_nU.Controls
             if (row.Call is { } call)
             {
                 await StartCallAsync(call.Video);
+                return;
+            }
+            // Any other message opens what can be done with it, unless the tap was meant for something inside it.
+            if (row.CanAct)
+            {
+                if (!TapGuard.Recent)
+                    await ShowMenuAsync(row);
                 return;
             }
             if (row.State != MessageState.Failed || _chat is null)
@@ -693,6 +772,7 @@ namespace Mi_nU.Controls
                     .ToList(),
             };
             _outgoing[row.ClientMessageId] = files;
+            row = row with { ReplyTo = TakeReply() };
             _rows.Add(row);
             Relink(_rows.Count - 1);
             ScrollToEnd();
@@ -847,7 +927,7 @@ namespace Mi_nU.Controls
                     _files.Put(file, outgoing.Bytes);
                     outgoing.Uploaded = file;
                 }
-                var sent = await _hub.SendAttachmentsAsync(chat.Id, row.Text, row.ClientMessageId, files.Select(outgoing => outgoing.Uploaded!.Id).ToList());
+                var sent = await _hub.SendAsync(chat.Id, row.Text, row.ClientMessageId, files.Select(outgoing => outgoing.Uploaded!.Id).ToList(), row.ReplyTo?.Id);
                 _outgoing.Remove(row.ClientMessageId);
                 foreach (var outgoing in files)
                     TryDelete(outgoing.LocalPath);
@@ -877,7 +957,7 @@ namespace Mi_nU.Controls
             try
             {
                 // Resending with the same id can't duplicate a message that did get through.
-                var sent = await _hub.SendMessageAsync(chat.Id, row.Text, row.ClientMessageId);
+                var sent = await _hub.SendAsync(chat.Id, row.Text, row.ClientMessageId, replyToId: row.ReplyTo?.Id);
                 if (_chat?.Id == chat.Id)
                     Merge(sent);
             }
@@ -946,6 +1026,12 @@ namespace Mi_nU.Controls
                 Call = message.Kind == MessageKind.Call ? message.Call : null,
                 IsSystem = message.Kind == MessageKind.System,
                 Attachments = message.Attachments?.Select(file => new AttachmentItem(file)).ToList(),
+                ReplyTo = message.ReplyTo,
+                Edited = message.EditedAt is not null,
+                ForwardedFrom = message.ForwardedFrom,
+                Reactions = message.Reactions?
+                    .Select(reaction => new ReactionChip(message.Id, reaction.Emoji, reaction.UserIds.Count, reaction.UserIds.Contains(_auth.Session?.User.Id ?? default)))
+                    .ToList(),
             };
         }
 

@@ -78,7 +78,13 @@
                                     </Label>
                                 </Grid>
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <Label Text="{Binding Preview}" Style="{StaticResource Caption}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1" />
+                                    <Label Text="{Binding Preview}" Style="{StaticResource Caption}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label" Binding="{Binding IsTyping}" Value="True">
+                                                <Setter Property="TextColor" Value="{DynamicResource AccentText}" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
                                     <Border Grid.Column="1" Style="{StaticResource Badge}" IsVisible="{Binding HasUnread}" VerticalOptions="Center"
                                             AutomationId="ChatUnread" SemanticProperties.Description="{Binding UnreadDescription}">
                                         <Label Text="{Binding Unread}" FontFamily="InterSemiBold" FontSize="12" TextColor="{DynamicResource OnAccent}"

@@ -105,13 +105,14 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
     /// Null when they aren't. Sending again with the same client id returns the message already sent.
     /// </summary>
     public async Task<(MessageDto? Message, bool Created)> AddMessageWithFilesAsync(Guid chatId, Guid senderId, string text,
-        Guid clientMessageId, IReadOnlyCollection<Guid> fileIds)
+        Guid clientMessageId, IReadOnlyCollection<Guid> fileIds, long? replyToId = null)
     {
         if (await FindMessageAsync(senderId, clientMessageId) is { } existing)
             return (await WithAttachmentsAsync(existing), false);
 
+        var replyTo = await ValidReplyAsync(chatId, replyToId);
         await using var transaction = await db.Database.BeginTransactionAsync();
-        var message = new Message { ChatId = chatId, SenderId = senderId, Text = text, ClientMessageId = clientMessageId };
+        var message = new Message { ChatId = chatId, SenderId = senderId, Text = text, ClientMessageId = clientMessageId, ReplyToId = replyTo };
         db.Messages.Add(message);
         try
         {
@@ -140,8 +141,186 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
         return (await WithAttachmentsAsync(message), true);
     }
 
-    async Task<MessageDto> WithAttachmentsAsync(Message message) =>
-        ToDto(message, (await AttachmentsOfAsync([message.Id])).GetValueOrDefault(message.Id));
+    async Task<MessageDto> WithAttachmentsAsync(Message message) => await WithDetailsAsync(message);
+
+    /// <summary>A message with everything about it: its files, its reactions, and the line it quotes if it is a reply.</summary>
+    public async Task<MessageDto> WithDetailsAsync(Message message) => (await WithDetailsAsync([message]))[0];
+
+    async Task<List<MessageDto>> WithDetailsAsync(IReadOnlyList<Message> messages)
+    {
+        var ids = messages.Select(message => message.Id).ToList();
+        var files = await AttachmentsOfAsync(ids);
+        var reactions = ids.Count == 0 ? [] : (await db.Reactions.AsNoTracking()
+                .Where(reaction => ids.Contains(reaction.MessageId))
+                .OrderBy(reaction => reaction.At)
+                .ToListAsync())
+            .GroupBy(reaction => reaction.MessageId)
+            .ToDictionary(group => group.Key, group => group.GroupBy(reaction => reaction.Emoji)
+                .Select(emoji => new ReactionDto(emoji.Key, emoji.Select(reaction => reaction.UserId).ToList()))
+                .ToList());
+
+        // The answered messages, each as one line: who wrote it and how it begins, or that it is gone.
+        var answeredIds = messages.Where(message => message.ReplyToId is not null).Select(message => message.ReplyToId!.Value).Distinct().ToList();
+        var answered = answeredIds.Count == 0 ? [] : await db.Messages.AsNoTracking().Include(message => message.Sender)
+            .Where(message => answeredIds.Contains(message.Id))
+            .ToListAsync();
+        var answeredFiles = await AttachmentsOfAsync(answered.Select(message => message.Id).ToList());
+        var quotes = answeredIds.ToDictionary(id => id, id => answered.FirstOrDefault(message => message.Id == id) is { } original
+            ? new ReplyPreview(id, original.Sender.DisplayName, Shorten(ToDto(original, answeredFiles.GetValueOrDefault(id)).Summary))
+            : new ReplyPreview(id, "", "", Deleted: true));
+
+        return messages.Select(message => ToDto(message, files.GetValueOrDefault(message.Id)) with
+        {
+            ReplyTo = message.ReplyToId is { } replyTo ? quotes[replyTo] : null,
+            Reactions = reactions.GetValueOrDefault(message.Id),
+        }).ToList();
+    }
+
+    /// <summary>A quoted line is short: the start of a long message is enough to tell which one it was.</summary>
+    static string Shorten(string text)
+    {
+        var line = text.ReplaceLineEndings(" ");
+        return line.Length <= 100 ? line : line[..99] + "…";
+    }
+
+    /// <summary>The message a reply may answer: one in the same chat, or none.</summary>
+    async Task<long?> ValidReplyAsync(Guid chatId, long? replyToId) =>
+        replyToId is { } id && await db.Messages.AnyAsync(message => message.Id == id && message.ChatId == chatId) ? id : null;
+
+    /// <summary>A message to change, with its chat: only the sender's own text or caption, never a call record or a group line.</summary>
+    Task<Message?> OwnMessageAsync(Guid userId, long messageId) =>
+        db.Messages.Include(message => message.Sender)
+            .FirstOrDefaultAsync(message => message.Id == messageId && message.SenderId == userId && message.Kind == MessageKind.Text);
+
+    /// <summary>New text for one's own message; a message with files may lose its caption, one without may not lose its text.</summary>
+    public async Task<MessageDto?> EditAsync(Guid userId, long messageId, string text)
+    {
+        if (await OwnMessageAsync(userId, messageId) is not { } message)
+            return null;
+        if (text.Length == 0 && !await db.Files.AnyAsync(file => file.MessageId == messageId))
+            return null;
+        if (message.Text != text)
+        {
+            message.Text = text;
+            message.EditedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        return await WithDetailsAsync(message);
+    }
+
+    /// <summary>Deletes one's own message for everyone, with its files and reactions. The chat it was in, or null.</summary>
+    public async Task<Guid?> DeleteAsync(Guid userId, long messageId)
+    {
+        if (await OwnMessageAsync(userId, messageId) is not { } message)
+            return null;
+        var files = await db.Files.Where(file => file.MessageId == messageId).ToListAsync();
+        db.Files.RemoveRange(files);
+        db.Messages.Remove(message);
+        await db.SaveChangesAsync();
+        foreach (var file in files)
+        {
+            try
+            {
+                await storage.DeleteAsync(file.Key, CancellationToken.None);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                logger.LogWarning(e, "Could not delete file {Key} of deleted message {MessageId}", file.Key, messageId);
+            }
+        }
+        return message.ChatId;
+    }
+
+    /// <summary>Sets or, with null, removes the user's reaction; the message as it now is, or null if it isn't theirs to see.</summary>
+    public async Task<MessageDto?> ReactAsync(Guid userId, long messageId, string? emoji)
+    {
+        var message = await db.Messages.Include(x => x.Sender).AsNoTracking().FirstOrDefaultAsync(x => x.Id == messageId);
+        if (message is null || message.Kind == MessageKind.System || !await IsMemberAsync(message.ChatId, userId))
+            return null;
+        await db.Reactions.Where(reaction => reaction.MessageId == messageId && reaction.UserId == userId).ExecuteDeleteAsync();
+        if (emoji is not null)
+        {
+            db.Reactions.Add(new Reaction { MessageId = messageId, UserId = userId, Emoji = emoji });
+            await db.SaveChangesAsync();
+        }
+        return await WithDetailsAsync(message);
+    }
+
+    /// <summary>
+    /// A copy of a message in another chat the user is in, from them, saying who first wrote it. Its files are copied too,
+    /// so deleting either message leaves the other whole. Null when the user can't see the message or can't write there.
+    /// </summary>
+    public async Task<MessageDto?> ForwardAsync(Guid userId, long messageId, Guid toChatId)
+    {
+        var original = await db.Messages.Include(x => x.Sender).AsNoTracking().FirstOrDefaultAsync(x => x.Id == messageId);
+        if (original is null || original.Kind != MessageKind.Text
+            || !await IsMemberAsync(original.ChatId, userId) || !await IsMemberAsync(toChatId, userId))
+            return null;
+
+        var copy = new Message
+        {
+            ChatId = toChatId,
+            SenderId = userId,
+            Text = original.Text,
+            ClientMessageId = Guid.NewGuid(),
+            ForwardedFrom = original.ForwardedFrom ?? original.Sender.DisplayName,
+        };
+        db.Messages.Add(copy);
+        await db.SaveChangesAsync();
+
+        var files = await db.Files.AsNoTracking().Where(file => file.MessageId == messageId).OrderBy(file => file.CreatedAt).ToListAsync();
+        var copied = new List<StoredFile>();
+        try
+        {
+            foreach (var file in files)
+            {
+                var twin = new StoredFile
+                {
+                    OwnerId = userId,
+                    ChatId = toChatId,
+                    MessageId = copy.Id,
+                    Name = file.Name,
+                    ContentType = file.ContentType,
+                    Size = file.Size,
+                    Width = file.Width,
+                    Height = file.Height,
+                    DurationSeconds = file.DurationSeconds,
+                    Waveform = file.Waveform,
+                    // Kept in the same order as the original's.
+                    CreatedAt = file.CreatedAt,
+                };
+                await storage.CopyAsync(file.Key, twin.Key, CancellationToken.None);
+                copied.Add(twin);
+            }
+        }
+        catch (Exception e) when (e is Amazon.Runtime.AmazonServiceException or HttpRequestException)
+        {
+            logger.LogError(e, "Storage refused copying the files of message {MessageId}", messageId);
+            foreach (var twin in copied)
+                await storage.DeleteAsync(twin.Key, CancellationToken.None);
+            await db.Messages.Where(message => message.Id == copy.Id).ExecuteDeleteAsync();
+            throw;
+        }
+        db.Files.AddRange(copied);
+        await db.SaveChangesAsync();
+
+        await db.Entry(copy).Reference(x => x.Sender).LoadAsync();
+        await AdvanceReadAsync(toChatId, userId, copy.Id);
+        return await WithDetailsAsync(copy);
+    }
+
+    /// <summary>The chat's messages whose text holds <paramref name="query"/>, ignoring case, newest first.</summary>
+    public async Task<List<MessageDto>> SearchAsync(Guid chatId, string query, int limit)
+    {
+        // % and _ are wildcards to LIKE; searched for, they mean themselves.
+        var pattern = "%" + query.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_") + "%";
+        var found = await db.Messages.AsNoTracking().Include(message => message.Sender)
+            .Where(message => message.ChatId == chatId && message.Kind == MessageKind.Text && EF.Functions.ILike(message.Text, pattern, @"\"))
+            .OrderByDescending(message => message.Id)
+            .Take(limit)
+            .ToListAsync();
+        return await WithDetailsAsync(found);
+    }
 
     /// <summary>Returns the existing chat if the pair already has one; <c>Created</c> says which happened.</summary>
     public async Task<(Chat? Chat, bool Created)> GetOrCreateDirectAsync(Guid userId, Guid otherId)
@@ -273,17 +452,21 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
             .AsNoTracking()
             .ToListAsync();
         page.Reverse();
-        var attachments = await AttachmentsOfAsync(page.Select(message => message.Id).ToList());
-        return page.Select(message => ToDto(message, attachments.GetValueOrDefault(message.Id))).ToList();
+        return await WithDetailsAsync(page);
     }
 
-    public async Task<(MessageDto Message, bool Created)> AddMessageAsync(Guid chatId, Guid senderId, string text, Guid clientMessageId)
+    public async Task<(MessageDto Message, bool Created)> AddMessageAsync(Guid chatId, Guid senderId, string text, Guid clientMessageId,
+        long? replyToId = null)
     {
         var existing = await FindMessageAsync(senderId, clientMessageId);
         if (existing is not null)
-            return (ToDto(existing), false);
+            return (await WithDetailsAsync(existing), false);
 
-        var message = new Message { ChatId = chatId, SenderId = senderId, Text = text, ClientMessageId = clientMessageId };
+        var message = new Message
+        {
+            ChatId = chatId, SenderId = senderId, Text = text, ClientMessageId = clientMessageId,
+            ReplyToId = await ValidReplyAsync(chatId, replyToId),
+        };
         db.Messages.Add(message);
         try
         {
@@ -292,13 +475,13 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
         catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
             db.ChangeTracker.Clear();
-            return (ToDto((await FindMessageAsync(senderId, clientMessageId))!), false);
+            return (await WithDetailsAsync((await FindMessageAsync(senderId, clientMessageId))!), false);
         }
 
         await db.Entry(message).Reference(x => x.Sender).LoadAsync();
         // Whoever writes has seen the chat up to their own message.
         await AdvanceReadAsync(chatId, senderId, message.Id);
-        return (ToDto(message), true);
+        return (await WithDetailsAsync(message), true);
     }
 
     /// <summary>
@@ -382,7 +565,7 @@ public class ChatService(AppDbContext db, IFileStorage storage, ILogger<ChatServ
     static MessageDto ToDto(Message message, IReadOnlyList<FileDto>? attachments) =>
         new(message.Id, message.ChatId, ToDto(message.Sender), message.Text, message.SentAt, message.ClientMessageId,
             message.Kind, message.Kind == MessageKind.Call ? new CallSummary(message.CallVideo, message.CallSeconds) : null,
-            attachments is { Count: > 0 } ? attachments : null);
+            attachments is { Count: > 0 } ? attachments : null, EditedAt: message.EditedAt, ForwardedFrom: message.ForwardedFrom);
 
     Task<Chat?> FindDirectAsync(string key) => Chats().FirstOrDefaultAsync(chat => chat.DirectKey == key);
 

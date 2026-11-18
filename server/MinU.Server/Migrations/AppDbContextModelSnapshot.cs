@@ -127,8 +127,18 @@ namespace MinU.Server.Migrations
                     b.Property<Guid>("ClientMessageId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ForwardedFrom")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("Kind")
                         .HasColumnType("integer");
+
+                    b.Property<long?>("ReplyToId")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid>("SenderId")
                         .HasColumnType("uuid");
@@ -149,6 +159,27 @@ namespace MinU.Server.Migrations
                         .IsUnique();
 
                     b.ToTable("Messages");
+                });
+
+            modelBuilder.Entity("MinU.Server.Reaction", b =>
+                {
+                    b.Property<long>("MessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Emoji")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("MessageId", "UserId");
+
+                    b.ToTable("Reactions");
                 });
 
             modelBuilder.Entity("MinU.Server.RefreshToken", b =>
@@ -318,6 +349,15 @@ namespace MinU.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("MinU.Server.Reaction", b =>
+                {
+                    b.HasOne("MinU.Server.Message", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MinU.Server.RefreshToken", b =>

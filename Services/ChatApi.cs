@@ -137,6 +137,10 @@ namespace Mi_nU.Services
         public Task<List<MessageDto>> GetMessagesAsync(Guid chatId, long? before = null) =>
             SendAsync(HttpMethod.Get, $"/api/chats/{chatId}/messages{(before is null ? "" : $"?before={before}")}", null, ChatJsonContext.Default.ListMessageDto);
 
+        /// <summary>The chat's messages holding <paramref name="query"/>, ignoring case, newest first.</summary>
+        public Task<List<MessageDto>> SearchAsync(Guid chatId, string query, CancellationToken cancel = default) =>
+            SendAsync(HttpMethod.Get, $"/api/chats/{chatId}/search?q={Uri.EscapeDataString(query)}", null, ChatJsonContext.Default.ListMessageDto, cancel);
+
         /// <summary>Tells the server where to send this user's push notifications.</summary>
         public Task RegisterDeviceAsync(string token, string platform) =>
             SendAsync(HttpMethod.Put, "/api/devices",

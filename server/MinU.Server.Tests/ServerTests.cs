@@ -167,6 +167,22 @@ public sealed record Client(HttpClient Http, HubConnection Hub, UserDto User, st
         });
         return result.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
+
+    /// <summary>The next call of a hub method with two arguments.</summary>
+    public Task<(T1, T2)> Next<T1, T2>(string hubMethod)
+    {
+        var result = new TaskCompletionSource<(T1, T2)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        IDisposable? subscription = null;
+        subscription = Hub.On<T1, T2>(hubMethod, (first, second) =>
+        {
+            subscription?.Dispose();
+            result.TrySetResult((first, second));
+        });
+        return result.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    public Task<MessageDto> ReplyAsync(Guid chatId, string text, long replyToId) =>
+        Hub.InvokeAsync<MessageDto>("Send", new SendMessageRequest(chatId, text, Guid.NewGuid(), ReplyToId: replyToId));
 }
 
 public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
@@ -935,6 +951,144 @@ public class ServerTests(ServerFixture server) : IClassFixture<ServerFixture>
         await alice.Http.DeleteAsync($"/api/chats/{group.Id}/members/{alice.User.Id}");
         using (var scope = server.Services.CreateScope())
             Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().Files.AnyAsync(x => x.Id == third));
+    }
+
+    [Fact]
+    public async Task A_reply_quotes_its_message_and_says_when_that_is_gone()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var chat = await alice.DirectChatWithAsync(bob);
+        var question = await alice.SendAsync(chat.Id, "Are you coming tonight? " + new string('x', 200));
+
+        var bobGot = bob.Next<MessageDto>("MessageReceived");
+        var answer = await bob.ReplyAsync(chat.Id, "Yes", question.Id);
+        Assert.Equal(question.Id, answer.ReplyTo!.Id);
+        Assert.Equal("alice", answer.ReplyTo.SenderName);
+        // Only the start of a long message is quoted.
+        Assert.StartsWith("Are you coming tonight?", answer.ReplyTo.Summary);
+        Assert.True(answer.ReplyTo.Summary.Length <= 100);
+        Assert.Equal(question.Id, (await bobGot).ReplyTo!.Id);
+
+        // A reply to a message of another chat is just a message.
+        var other = await alice.GroupWithAsync("team", bob);
+        Assert.Null((await bob.ReplyAsync(other.Id, "Hm", question.Id)).ReplyTo);
+
+        await alice.Hub.InvokeAsync("DeleteMessage", question.Id);
+        var history = (await bob.Http.GetFromJsonAsync<List<MessageDto>>($"/api/chats/{chat.Id}/messages"))!;
+        Assert.True(Assert.Single(history).ReplyTo!.Deleted);
+    }
+
+    [Fact]
+    public async Task Own_messages_can_be_edited_and_deleted_for_everyone_and_others_cannot()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var chat = await alice.DirectChatWithAsync(bob);
+        var sent = await alice.SendAsync(chat.Id, "Helo");
+
+        var bobSaw = bob.Next<MessageDto>("MessageUpdated");
+        var edited = await alice.Hub.InvokeAsync<MessageDto>("EditMessage", sent.Id, " Hello ");
+        Assert.Equal("Hello", edited.Text);
+        Assert.NotNull(edited.EditedAt);
+        Assert.Equal(("Hello", sent.Id), ((await bobSaw).Text, (await bobSaw).Id));
+
+        await Assert.ThrowsAsync<HubException>(() => bob.Hub.InvokeAsync<MessageDto>("EditMessage", sent.Id, "mine now"));
+        await Assert.ThrowsAsync<HubException>(() => alice.Hub.InvokeAsync<MessageDto>("EditMessage", sent.Id, "   "));
+        await Assert.ThrowsAsync<HubException>(() => bob.Hub.InvokeAsync("DeleteMessage", sent.Id));
+
+        // A message with a photo loses it along with the message.
+        var photo = await UploadAsync(alice, chat.Id, Png, "a.png", "image/png");
+        var album = await alice.Hub.InvokeAsync<MessageDto>("SendAttachments", chat.Id, "look", Guid.NewGuid(), new[] { photo.Id });
+        // Its caption may go: the photo is still a message.
+        Assert.Equal("", (await alice.Hub.InvokeAsync<MessageDto>("EditMessage", album.Id, "")).Text);
+        var link = (await bob.Http.GetFromJsonAsync<FileLinkDto>($"/api/files/{photo.Id}/link"))!;
+
+        var deleted = bob.Next<Guid, long>("MessageDeleted");
+        await alice.Hub.InvokeAsync("DeleteMessage", album.Id);
+        Assert.Equal((chat.Id, album.Id), await deleted);
+        var history = (await bob.Http.GetFromJsonAsync<List<MessageDto>>($"/api/chats/{chat.Id}/messages"))!;
+        Assert.Equal([sent.Id], history.Select(message => message.Id));
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.Http.GetAsync($"/api/files/{photo.Id}/link")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Storage.GetAsync(link.Url)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Reactions_are_one_per_person_and_reach_everyone()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var stranger = await server.RegisterAsync("stranger");
+        var chat = await alice.DirectChatWithAsync(bob);
+        var sent = await alice.SendAsync(chat.Id, "Done!");
+
+        var aliceSaw = alice.Next<MessageDto>("MessageUpdated");
+        await bob.Hub.InvokeAsync<MessageDto>("React", sent.Id, "👍");
+        Assert.Equal([bob.User.Id], Assert.Single((await aliceSaw).Reactions!).UserIds);
+
+        await alice.Hub.InvokeAsync<MessageDto>("React", sent.Id, "👍");
+        // A second reaction replaces the first.
+        var changed = await bob.Hub.InvokeAsync<MessageDto>("React", sent.Id, "🔥");
+        Assert.Equal([("👍", 1), ("🔥", 1)], changed.Reactions!.Select(r => (r.Emoji, r.UserIds.Count)).OrderBy(r => r.Item1));
+        var history = (await alice.Http.GetFromJsonAsync<List<MessageDto>>($"/api/chats/{chat.Id}/messages"))!;
+        Assert.Equal(2, Assert.Single(history).Reactions!.Count);
+
+        Assert.Null((await bob.Hub.InvokeAsync<MessageDto>("React", sent.Id, null)).Reactions!.SingleOrDefault(r => r.Emoji == "🔥"));
+        await Assert.ThrowsAsync<HubException>(() => bob.Hub.InvokeAsync<MessageDto>("React", sent.Id, "💩"));
+        await Assert.ThrowsAsync<HubException>(() => stranger.Hub.InvokeAsync<MessageDto>("React", sent.Id, "👍"));
+    }
+
+    [Fact]
+    public async Task A_forwarded_message_names_its_author_and_has_its_own_copy_of_the_files()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var carol = await server.RegisterAsync("carol");
+        var withBob = await alice.DirectChatWithAsync(bob);
+        var withCarol = await bob.DirectChatWithAsync(carol);
+        var photo = await UploadAsync(alice, withBob.Id, Png, "a.png", "image/png", 10, 10);
+        var original = await alice.Hub.InvokeAsync<MessageDto>("SendAttachments", withBob.Id, "our team", Guid.NewGuid(), new[] { photo.Id });
+
+        var carolGot = carol.Next<MessageDto>("MessageReceived");
+        var forwarded = await bob.Hub.InvokeAsync<MessageDto>("Forward", original.Id, withCarol.Id);
+        Assert.Equal(("alice", bob.User.Id, "our team"), (forwarded.ForwardedFrom, forwarded.Sender.Id, forwarded.Text));
+        var copy = Assert.Single((await carolGot).Attachments!);
+        Assert.NotEqual(photo.Id, copy.Id);
+        Assert.Equal((10, 10), (copy.Width!.Value, copy.Height!.Value));
+
+        // Carol has her own copy, which outlives the original.
+        await alice.Hub.InvokeAsync("DeleteMessage", original.Id);
+        var link = (await carol.Http.GetFromJsonAsync<FileLinkDto>($"/api/files/{copy.Id}/link"))!;
+        using (var download = await Storage.GetAsync(link.Url))
+            Assert.Equal(Png, await download.Content.ReadAsByteArrayAsync());
+
+        // Forwarded again, it still names Alice; and nobody forwards into a chat they aren't in.
+        var again = await carol.Hub.InvokeAsync<MessageDto>("Forward", forwarded.Id, withCarol.Id);
+        Assert.Equal("alice", again.ForwardedFrom);
+        await Assert.ThrowsAsync<HubException>(() => carol.Hub.InvokeAsync<MessageDto>("Forward", forwarded.Id, withBob.Id));
+    }
+
+    [Fact]
+    public async Task Typing_reaches_the_others_and_search_finds_text()
+    {
+        var alice = await server.RegisterAsync("alice");
+        var bob = await server.RegisterAsync("bob");
+        var chat = await alice.DirectChatWithAsync(bob);
+
+        var typing = bob.Next<Guid, Guid>("UserTyping");
+        await alice.Hub.InvokeAsync("Typing", chat.Id);
+        Assert.Equal((chat.Id, alice.User.Id), await typing);
+
+        await alice.SendAsync(chat.Id, "Meeting at 10");
+        await bob.SendAsync(chat.Id, "the MEETING moved");
+        await bob.SendAsync(chat.Id, "100% sure");
+        await alice.SendAsync(chat.Id, "nothing here");
+        var found = (await bob.Http.GetFromJsonAsync<List<MessageDto>>($"/api/chats/{chat.Id}/search?q=meeting"))!;
+        Assert.Equal(["the MEETING moved", "Meeting at 10"], found.Select(message => message.Text));
+        // % is searched for as itself, not as "anything".
+        Assert.Equal("100% sure", Assert.Single((await bob.Http.GetFromJsonAsync<List<MessageDto>>($"/api/chats/{chat.Id}/search?q=0%25"))!).Text);
+        var stranger = await server.RegisterAsync("stranger");
+        Assert.Equal(HttpStatusCode.NotFound, (await stranger.Http.GetAsync($"/api/chats/{chat.Id}/search?q=meeting")).StatusCode);
     }
 
     [Fact]

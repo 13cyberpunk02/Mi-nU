@@ -28,6 +28,8 @@
     <Color x:Key="BubbleMine">#DDF1EE</Color>
     <Color x:Key="BubbleMineMuted">#3F5F5B</Color>
     <Color x:Key="BubbleOther">#FFFFFF</Color>
+    <!-- The quoted line of a reply, a shade over either bubble. -->
+    <Color x:Key="ReplyBackground">#12000000</Color>
     <Color x:Key="BubbleFailed">#FBE7E5</Color>
     <Color x:Key="DangerText">#B02E26</Color>
 

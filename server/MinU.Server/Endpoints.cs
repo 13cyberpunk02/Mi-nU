@@ -195,6 +195,17 @@ public static partial class Endpoints
             return Results.Ok(await chats.HistoryAsync(chatId, before, Math.Clamp(limit ?? 50, 1, Limits.HistoryPageMax)));
         });
 
+        // Messages of the chat whose text holds q, ignoring case, newest first.
+        api.MapGet("/chats/{chatId:guid}/search", async (Guid chatId, string? q, int? limit, ChatService chats, ClaimsPrincipal principal) =>
+        {
+            if (!await chats.IsMemberAsync(chatId, UserId(principal)))
+                return Results.NotFound();
+            var query = q?.Trim() ?? "";
+            if (query.Length is 0 or > 100)
+                return Problem("Search for 1 to 100 characters.");
+            return Results.Ok(await chats.SearchAsync(chatId, query, Math.Clamp(limit ?? 50, 1, Limits.HistoryPageMax)));
+        });
+
         // Any member may rename the group or add people; only the owner removes others, and anyone may leave.
         api.MapPut("/chats/{chatId:guid}/title", async (Guid chatId, RenameGroupRequest request, ChatService chats,
             ClaimsPrincipal principal, IHubContext<ChatHub, IChatClient> hub) =>
